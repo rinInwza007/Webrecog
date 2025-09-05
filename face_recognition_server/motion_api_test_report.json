@@ -1,0 +1,93 @@
+{
+  "test_run_timestamp": "2025-09-05T21:55:13.124177",
+  "api_base_url": "http://localhost:8000",
+  "total_tests": 12,
+  "passed_tests": 0,
+  "failed_tests": 12,
+  "test_results": [
+    {
+      "test_name": "Health Check",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:11.848512",
+      "response_data": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /health (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000240D630F550>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))"
+    },
+    {
+      "test_name": "Motion System Status",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:17.921866",
+      "response_data": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/motion/system-status (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000240D62F3510>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))"
+    },
+    {
+      "test_name": "Face Enrollment",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:24.058137",
+      "response_data": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/face/enroll (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000240D66DB550>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))"
+    },
+    {
+      "test_name": "Start Motion Session",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:30.118759",
+      "response_data": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/session/start-motion-detection (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000240D66DA150>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))"
+    },
+    {
+      "test_name": "Motion Triggered Snapshot",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:32.119821",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Motion Snapshot Cooldown",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:34.120339",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Manual Teacher Capture",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:36.120836",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Force Capture",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:38.121179",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Live Motion Stats",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:40.121902",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Motion Session Statistics",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:42.122304",
+      "response_data": null,
+      "error": "No active session"
+    },
+    {
+      "test_name": "Clear Motion Cache",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:48.203315",
+      "response_data": null,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Max retries exceeded with url: /api/motion/cache/clear (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x00000240D66F1750>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))"
+    },
+    {
+      "test_name": "End Motion Session",
+      "success": false,
+      "timestamp": "2025-09-05T21:54:50.204004",
+      "response_data": null,
+      "error": "No active session"
+    }
+  ]
+}

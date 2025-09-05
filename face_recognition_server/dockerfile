@@ -1,0 +1,26 @@
+# ใช้ Python image ที่เบา
+FROM python:3.11-slim
+
+# ติดตั้ง dependencies สำหรับ face_recognition และ opencv
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libopenblas-dev \
+    liblapack-dev \
+    libx11-dev \
+    libgtk2.0-dev \
+    libboost-all-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ตั้ง working directory
+WORKDIR /app
+
+# copy requirements.txt และติดตั้ง
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# copy code ทั้งหมด
+COPY . .
+
+# Cloud Run จะ set PORT เอง แต่ uvicorn ต้องรันบน 0.0.0.0
+CMD exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}
