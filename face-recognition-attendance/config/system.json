@@ -1,0 +1,196 @@
+{
+  "system": {
+    "name": "Face Recognition Attendance System",
+    "version": "1.0.0",
+    "description": "AI-powered attendance system with motion detection",
+    "author": "Your Name",
+    "created": "2024-01-XX",
+    "environment": "development"
+  },
+  "servers": {
+    "frontend": {
+      "url": "http://localhost:5173",
+      "port": 5173,
+      "protocol": "http",
+      "framework": "React + Vite"
+    },
+    "backend": {
+      "url": "http://localhost:8000",
+      "port": 8000,
+      "protocol": "http",
+      "framework": "FastAPI",
+      "endpoints": {
+        "health": "/health",
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "face_enroll": "/api/face/enroll",
+        "motion_session": "/api/session/start-motion-detection",
+        "motion_snapshot": "/api/motion/snapshot",
+        "manual_capture": "/api/motion/manual-capture",
+        "session_stats": "/api/session/{session_id}/motion-statistics"
+      }
+    }
+  },
+  "database": {
+    "provider": "supabase",
+    "type": "postgresql",
+    "tables": {
+      "core": [
+        "users",
+        "classes",
+        "student_enrollments"
+      ],
+      "attendance": [
+        "attendance_sessions",
+        "attendance_records"
+      ],
+      "face_recognition": [
+        "student_face_embeddings"
+      ],
+      "motion_detection": [
+        "motion_captures"
+      ]
+    },
+    "features": {
+      "rls": true,
+      "auth": true,
+      "realtime": true,
+      "storage": true
+    }
+  },
+  "features": {
+    "face_recognition": {
+      "enabled": true,
+      "threshold": 0.7,
+      "models": ["cnn", "hog"],
+      "enrollment": {
+        "min_images": 1,
+        "max_images": 5,
+        "recommended_images": 3,
+        "max_file_size_mb": 5,
+        "supported_formats": ["jpg", "jpeg", "png"]
+      },
+      "processing": {
+        "num_jitters": 2,
+        "face_quality_check": true,
+        "adaptive_threshold": true
+      }
+    },
+    "motion_detection": {
+      "enabled": true,
+      "threshold": 0.1,
+      "cooldown_seconds": 30,
+      "max_snapshots_per_hour": 120,
+      "adaptive_processing": true,
+      "phases": {
+        "0-10": {
+          "threshold": 0.05,
+          "priority": 1,
+          "accuracy": "high"
+        },
+        "10-30": {
+          "threshold": 0.08,
+          "priority": 2,
+          "accuracy": "high"
+        },
+        "30-60": {
+          "threshold": 0.12,
+          "priority": 3,
+          "accuracy": "medium"
+        },
+        "60+": {
+          "threshold": 0.20,
+          "priority": 4,
+          "accuracy": "standard"
+        }
+      }
+    },
+    "attendance": {
+      "session_types": ["manual", "motion_detection"],
+      "on_time_limit_minutes": 30,
+      "late_threshold_minutes": 60,
+      "auto_end_hours": 4,
+      "statuses": ["present", "late", "absent"]
+    },
+    "authentication": {
+      "provider": "supabase",
+      "session_timeout_hours": 24,
+      "roles": ["student", "teacher", "admin"],
+      "password_min_length": 6
+    }
+  },
+  "security": {
+    "cors": {
+      "enabled": true,
+      "origins": [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173"
+      ],
+      "credentials": true
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 60,
+      "face_enrollment_per_hour": 10
+    },
+    "face_data": {
+      "encryption": true,
+      "storage": "supabase",
+      "retention_days": 365,
+      "anonymization": false
+    },
+    "api_keys": {
+      "required": false,
+      "header_name": "X-API-Key"
+    }
+  },
+  "performance": {
+    "optimization": {
+      "face_cache_enabled": true,
+      "face_cache_size": 1000,
+      "image_compression": true,
+      "lazy_loading": true,
+      "connection_pooling": true,
+      "batch_processing": true
+    },
+    "monitoring": {
+      "health_checks": true,
+      "performance_metrics": true,
+      "error_tracking": true,
+      "logging_level": "info"
+    },
+    "limits": {
+      "max_concurrent_sessions": 50,
+      "max_students_per_class": 500,
+      "max_face_images_per_student": 5,
+      "max_session_duration_hours": 8
+    }
+  },
+  "development": {
+    "debug": true,
+    "hot_reload": true,
+    "api_docs": true,
+    "console_logging": true,
+    "mock_data": false,
+    "test_mode": false
+  },
+  "production": {
+    "debug": false,
+    "https": true,
+    "compression": true,
+    "caching": true,
+    "console_logging": false,
+    "error_tracking": true,
+    "backup_enabled": true
+  },
+  "paths": {
+    "frontend": "./Myweb",
+    "backend": "./face_recognition_server",
+    "config": "./config",
+    "scripts": "./scripts",
+    "sql": "./sql_scripts",
+    "docs": "./docs",
+    "logs": "./face_recognition_server/logs"
+  }
+}
