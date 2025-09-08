@@ -8,11 +8,20 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
     password: '',
     confirmPassword: '',
     fullName: '',
+    schoolId: '', // เพิ่ม school_id
     role: 'student'
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { signUp } = useAuth()
+
+  // สร้าง school_id อัตโนมัติ
+  const generateSchoolId = (fullName, role) => {
+    const timestamp = Date.now().toString().slice(-6) // เอา 6 หลักสุดท้าย
+    const namePrefix = fullName.replace(/\s+/g, '').toLowerCase().slice(0, 3)
+    const rolePrefix = role === 'student' ? 'STD' : 'TCH'
+    return `${rolePrefix}${namePrefix}${timestamp}`.toUpperCase()
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -32,14 +41,40 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
       return
     }
 
+    if (!formData.fullName.trim()) {
+      setError('กรุณากรอกชื่อ-นามสกุล')
+      setLoading(false)
+      return
+    }
+
     try {
+      // สร้าง school_id อัตโนมัติถ้าไม่มีการกรอก
+      let schoolId = formData.schoolId.trim()
+      if (!schoolId) {
+        schoolId = generateSchoolId(formData.fullName, formData.role)
+      }
+
+      // ตรวจสอบว่า school_id ซ้ำหรือไม่
+      const { data: existingUser, error: checkError } = await supabase
+        .from('users')
+        .select('school_id')
+        .eq('school_id', schoolId)
+        .single()
+
+      if (existingUser) {
+        setError('รหัสนักเรียน/อาจารย์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น')
+        setLoading(false)
+        return
+      }
+
       // Sign up with Supabase Auth
       const { data, error: signUpError } = await signUp(
         formData.email,
         formData.password,
         {
           full_name: formData.fullName,
-          role: formData.role
+          role: formData.role,
+          school_id: schoolId
         }
       )
 
@@ -57,23 +92,34 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
               user_id: data.user.id,
               email: formData.email,
               full_name: formData.fullName,
+              school_id: schoolId, // เพิ่ม school_id
               role: formData.role,
-              password_hash: 'managed_by_supabase_auth' // Placeholder since Supabase manages this
+              password_hash: 'managed_by_supabase_auth', // Placeholder since Supabase manages this
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
             }
           ])
 
         if (insertError) {
           console.error('Error inserting user data:', insertError)
-          setError('เกิดข้อผิดพลาดในการบันทึกข้อมูลผู้ใช้')
+          setError('เกิดข้อผิดพลาดในการบันทึกข้อมูลผู้ใช้: ' + insertError.message)
           return
         }
+
+        console.log('User registered successfully:', {
+          user_id: data.user.id,
+          email: formData.email,
+          full_name: formData.fullName,
+          school_id: schoolId,
+          role: formData.role
+        })
 
         // Success - call the callback to proceed to next step
         onRegistrationSuccess(data.user, formData.role)
       }
     } catch (err) {
       console.error('Registration error:', err)
-      setError('เกิดข้อผิดพลาดในการสมัครสมาชิก')
+      setError('เกิดข้อผิดพลาดในการสมัครสมาชิก: ' + err.message)
     } finally {
       setLoading(false)
     }
@@ -94,7 +140,7 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             สมัครสมาชิก
           </h2>
-          <p className="text-gray-600">สร้างบัญชีใหม่สำหรับระบบเช็คชื่อ</p>
+          <p className="text-gray-600">สร้างบัญชีใหม่สำหรับระบบเช็คชื่อ AI</p>
         </div>
 
         {error && (
@@ -106,7 +152,7 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
-              ชื่อ-นามสกุล
+              ชื่อ-นามสกุล *
             </label>
             <input
               id="fullName"
@@ -121,24 +167,8 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              อีเมล
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              value={formData.email}
-              onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
-              placeholder="your@email.com"
-            />
-          </div>
-
-          <div>
             <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
-              ประเภทผู้ใช้
+              ประเภทผู้ใช้ *
             </label>
             <select
               id="role"
@@ -153,8 +183,46 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
           </div>
 
           <div>
+            <label htmlFor="schoolId" className="block text-sm font-medium text-gray-700 mb-2">
+              รหัส{formData.role === 'student' ? 'นักเรียน' : 'อาจารย์'}
+              <span className="text-gray-500 text-xs ml-1">(ไม่บังคับ - ระบบจะสร้างให้อัตโนมัติ)</span>
+            </label>
+            <input
+              id="schoolId"
+              name="schoolId"
+              type="text"
+              value={formData.schoolId}
+              onChange={handleInputChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              placeholder={`เช่น ${formData.role === 'student' ? 'STD001' : 'TCH001'} (หรือปล่อยว่างไว้)`}
+              maxLength={20}
+            />
+            {formData.fullName && !formData.schoolId && (
+              <p className="text-xs text-gray-500 mt-1">
+                ระบบจะสร้างรหัสให้อัตโนมัติ: {generateSchoolId(formData.fullName, formData.role)}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              อีเมล *
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              value={formData.email}
+              onChange={handleInputChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              placeholder="your@email.com"
+            />
+          </div>
+
+          <div>
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-              รหัสผ่าน
+              รหัสผ่าน *
             </label>
             <input
               id="password"
@@ -165,12 +233,13 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
               onChange={handleInputChange}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
               placeholder="••••••••"
+              minLength={6}
             />
           </div>
 
           <div>
             <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-              ยืนยันรหัสผ่าน
+              ยืนยันรหัสผ่าน *
             </label>
             <input
               id="confirmPassword"
@@ -181,8 +250,22 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
               onChange={handleInputChange}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
               placeholder="••••••••"
+              minLength={6}
             />
           </div>
+
+          {/* แสดงข้อมูลที่จะถูกบันทึก */}
+          {formData.fullName && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลที่จะบันทึก:</h4>
+              <ul className="text-xs text-green-700 space-y-1">
+                <li>• ชื่อ: {formData.fullName}</li>
+                <li>• ประเภท: {formData.role === 'student' ? 'นักเรียน' : 'อาจารย์'}</li>
+                <li>• รหัส: {formData.schoolId || generateSchoolId(formData.fullName, formData.role)}</li>
+                <li>• อีเมล: {formData.email}</li>
+              </ul>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -198,7 +281,7 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
                 กำลังสมัครสมาชิก...
               </div>
             ) : (
-              'สมัครสมาชิก'
+              '🚀 สมัครสมาชิก'
             )}
           </button>
 
@@ -213,6 +296,17 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
             </button>
           </div>
         </form>
+
+        {/* ข้อมูลเพิ่มเติม */}
+        <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-600">
+          <h4 className="font-medium text-gray-800 mb-2">หมายเหตุ:</h4>
+          <ul className="space-y-1">
+            <li>• รหัสนักเรียน/อาจารย์จะใช้สำหรับระบบ Face Recognition</li>
+            <li>• ถ้าไม่กรอกรหัส ระบบจะสร้างให้อัตโนมัติ</li>
+            <li>• นักเรียนจะต้องลงทะเบียนใบหน้าในขั้นตอนถัดไป</li>
+            <li>• อาจารย์สามารถใช้งานระบบได้ทันที</li>
+          </ul>
+        </div>
       </div>
     </div>
   )
