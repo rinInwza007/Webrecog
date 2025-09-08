@@ -35,22 +35,32 @@ const AppContent = () => {
     if (!user) return
 
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('role')
-        .eq('user_id', user.id)
-        .single()
+        console.log('Fetching role for user:', user.id)
+        
+        const { data, error } = await supabase
+            .from('users')
+            .select('role')
+            .eq('user_id', user.id)
+            .maybeSingle() // เปลี่ยนจาก .single() เป็น .maybeSingle()
 
-      if (error) {
-        console.error('Error fetching user role:', error)
-        return
-      }
+        if (error) {
+            console.error('Error fetching user role:', error)
+            // ถ้าไม่พบข้อมูล ให้ใช้ role เริ่มต้น
+            setUserRole('student')
+            return
+        }
 
-      setUserRole(data.role)
+        if (data && data.role) {
+            setUserRole(data.role)
+        } else {
+            // ไม่พบข้อมูล ให้ใช้ role เริ่มต้น
+            setUserRole('student')
+        }
     } catch (error) {
-      console.error('Error fetching user role:', error)
+        console.error('Error fetching user role:', error)
+        setUserRole('student') // fallback
     }
-  }
+}
 
   const handleRegistrationSuccess = (user, role) => {
     setRegisteredUser(user)

@@ -55,39 +55,44 @@ const TeacherDashboard = () => {
 
   const createClass = async () => {
     if (!newClass.subject_name.trim()) {
-      alert('กรุณากรอกชื่อวิชา')
-      return
+        alert('กรุณากรอกชื่อวิชา')
+        return
     }
 
     setActionLoading(true)
 
     try {
-      const classCode = generateClassCode()
-
-      const { error } = await supabase
-        .from('classes')
-        .insert([
-          {
+        const classCode = generateClassCode()
+        
+        // เพิ่ม teacher_email ใน payload
+        const classData = {
             subject_name: newClass.subject_name.trim(),
+            description: newClass.description?.trim() || null,
             schedule: newClass.schedule.trim() || null,
             teacher_id: user.id,
+            teacher_email: user.email, // เพิ่มบรรทัดนี้
             class_code: classCode
-          }
-        ])
+        }
 
-      if (error) throw error
+        console.log('Creating class with data:', classData) // debug log
 
-      alert(`สร้างคลาสเรียนสำเร็จ!\nรหัสคลาส: ${classCode}`)
-      setShowCreateModal(false)
-      setNewClass({ subject_name: '', schedule: '' })
-      fetchTeacherClasses()
+        const { error } = await supabase
+            .from('classes')
+            .insert([classData])
+
+        if (error) throw error
+
+        alert(`สร้างคลาสเรียนสำเร็จ!\nรหัสคลาส: ${classCode}`)
+        setShowCreateModal(false)
+        setNewClass({ subject_name: '', description: '', schedule: '' })
+        fetchTeacherClasses()
     } catch (error) {
-      console.error('Error creating class:', error)
-      alert('เกิดข้อผิดพลาดในการสร้างคลาสเรียน: ' + error.message)
+        console.error('Error creating class:', error)
+        alert('เกิดข้อผิดพลาดในการสร้างคลาสเรียน: ' + error.message)
     } finally {
-      setActionLoading(false)
+        setActionLoading(false)
     }
-  }
+}
 
   const deleteClass = async (classId, className) => {
     if (!confirm(`คุณต้องการลบคลาส "${className}" ใช่หรือไม่?`)) {
