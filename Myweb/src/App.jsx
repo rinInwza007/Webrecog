@@ -4,7 +4,7 @@ import Login from './Login'
 import Register from './Register'
 import FaceRegistration from './FaceRegistration'
 import StudentDashboard from './StudentDashboard'
-import TeacherDashboard from './TeacherDashboard'
+import EnhancedTeacherDashboard from './EnhancedTeacherDashboard' // เปลี่ยนจาก TeacherDashboard
 import { supabase } from './supabaseClient'
 
 // Loading Component
@@ -115,7 +115,7 @@ const AppContent = () => {
   if (userRole === 'student') {
     return <StudentDashboard />
   } else if (userRole === 'teacher') {
-    return <TeacherDashboard />
+    return <EnhancedTeacherDashboard /> // เปลี่ยนจาก TeacherDashboard เป็น EnhancedTeacherDashboard
   }
 
   // Fallback - still determining role
