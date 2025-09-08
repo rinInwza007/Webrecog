@@ -1976,10 +1976,4 @@ if __name__ == "__main__":
     print("   - Simple Check-in")
     print("=" * 60)
     
-    uvicorn.run(
-        app, 
-        host=HOST, 
-        port=PORT, 
-        log_level="info",
-        reload=DEBUG
-    )
+    uvicorn.run("main:app", host=HOST, port=PORT, log_level="info", reload=DEBUG)
