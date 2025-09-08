@@ -7,7 +7,32 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "// ===== Face Recognition System Scripts =====": "",
+    "system:start": "concurrently \"npm run api:start\" \"npm run dev\"",
+    "system:stop": "npm run api:stop",
+    "system:health": "curl http://localhost:8000/health || echo 'FastAPI server not running'",
+    "// ===== FastAPI Server Scripts =====": "",
+    "api:start": "cd face_recognition_server && python main.py",
+    "api:stop": "lsof -ti :8000 | xargs kill -9 2>/dev/null || echo 'No process on port 8000'",
+    "api:health": "curl -s http://localhost:8000/health | json_pp || echo 'API not responding'",
+    "api:docs": "open http://localhost:8000/docs || start http://localhost:8000/docs",
+    "// ===== Development Scripts =====": "",
+    "dev:frontend": "vite --port 5173",
+    "dev:backend": "cd face_recognition_server && python main.py",
+    "dev:both": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "// ===== Database Scripts =====": "",
+    "db:setup": "echo 'Please run the SQL scripts in Supabase Dashboard'",
+    "db:check": "node -e \"console.log('Checking database connection...'); import('./src/supabaseClient.js').then(({supabase}) => supabase.from('users').select('count').limit(1).then(r => console.log('✅ Database connected')).catch(e => console.error('❌ Database error:', e.message)))\"",
+    "// ===== Utility Scripts =====": "",
+    "clean": "rm -rf node_modules dist && npm install",
+    "logs:api": "tail -f face_recognition_server/logs/*.log 2>/dev/null || echo 'No API logs found'",
+    "install:deps": "npm install && cd face_recognition_server && pip install -r requirements.txt",
+    "// ===== Production Scripts =====": "",
+    "build:frontend": "vite build",
+    "build:api": "cd face_recognition_server && pip install -r requirements.txt --no-dev",
+    "preview:frontend": "vite preview --port 4173",
+    "start:prod": "concurrently \"cd face_recognition_server && uvicorn main:app --host 0.0.0.0 --port 8000\" \"npm run preview:frontend\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.2",
@@ -22,6 +47,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react-swc": "^4.0.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^8.2.2",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
@@ -29,5 +55,26 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.13",
     "vite": "^7.1.2"
-  }
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/face-recognition-attendance"
+  },
+  "keywords": [
+    "face-recognition",
+    "attendance",
+    "react",
+    "fastapi",
+    "supabase",
+    "ai",
+    "computer-vision"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "description": "Face Recognition Attendance System with Motion Detection",
+  "main": "src/main.jsx"
 }
