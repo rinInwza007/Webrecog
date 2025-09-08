@@ -1,0 +1,192 @@
+{
+  "database": {
+    "provider": "supabase",
+    "connection": {
+      "url": "${SUPABASE_URL}",
+      "anon_key": "${SUPABASE_ANON_KEY}",
+      "service_key": "${SUPABASE_SERVICE_KEY}",
+      "timeout": 30,
+      "pool_size": 10
+    },
+    "tables": {
+      "users": {
+        "description": "ข้อมูลผู้ใช้ (นักเรียน/อาจารย์)",
+        "columns": [
+          "user_id (UUID, PK)",
+          "email (TEXT, UNIQUE)",
+          "full_name (TEXT)",
+          "school_id (TEXT, UNIQUE)",
+          "role (TEXT)",
+          "password_hash (TEXT)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ],
+        "indexes": ["email", "school_id", "role"],
+        "rls_enabled": true
+      },
+      "classes": {
+        "description": "ข้อมูลคลาสเรียน",
+        "columns": [
+          "class_id (UUID, PK)",
+          "subject_name (TEXT)",
+          "description (TEXT)",
+          "schedule (TEXT)",
+          "teacher_id (UUID, FK)",
+          "teacher_email (TEXT)",
+          "class_code (TEXT, UNIQUE)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ],
+        "indexes": ["teacher_id", "class_code"],
+        "foreign_keys": ["teacher_id -> users.user_id"]
+      },
+      "student_enrollments": {
+        "description": "การลงทะเบียนนักเรียนในคลาส",
+        "columns": [
+          "enrollment_id (UUID, PK)",
+          "student_id (UUID, FK)",
+          "class_id (UUID, FK)",
+          "enrolled_at (TIMESTAMP)",
+          "status (TEXT)"
+        ],
+        "indexes": ["student_id", "class_id"],
+        "foreign_keys": [
+          "student_id -> users.user_id",
+          "class_id -> classes.class_id"
+        ]
+      },
+      "attendance_sessions": {
+        "description": "เซสชันเช็คชื่อ",
+        "columns": [
+          "id (UUID, PK)",
+          "class_id (UUID, FK)",
+          "teacher_email (TEXT)",
+          "start_time (TIMESTAMP)",
+          "end_time (TIMESTAMP)",
+          "on_time_limit_minutes (INTEGER)",
+          "status (TEXT)",
+          "session_type (TEXT)",
+          "motion_threshold (DECIMAL)",
+          "cooldown_seconds (INTEGER)",
+          "max_snapshots_per_hour (INTEGER)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ],
+        "indexes": ["class_id", "status", "session_type"],
+        "foreign_keys": ["class_id -> classes.class_id"]
+      },
+      "attendance_records": {
+        "description": "บันทึกการเช็คชื่อ",
+        "columns": [
+          "id (UUID, PK)",
+          "session_id (UUID, FK)",
+          "student_email (TEXT)",
+          "student_id (TEXT)",
+          "check_in_time (TIMESTAMP)",
+          "status (TEXT)",
+          "face_match_score (DECIMAL)",
+          "detection_method (TEXT)",
+          "processing_phase (TEXT)",
+          "face_quality (DECIMAL)",
+          "motion_strength (DECIMAL)",
+          "trigger_type (TEXT)",
+          "device_id (TEXT)",
+          "created_at (TIMESTAMP)"
+        ],
+        "indexes": ["session_id", "student_email", "status"],
+        "foreign_keys": ["session_id -> attendance_sessions.id"]
+      },
+      "student_face_embeddings": {
+        "description": "ข้อมูล Face Recognition ของนักเรียน",
+        "columns": [
+          "id (SERIAL, PK)",
+          "student_id (TEXT, FK)",
+          "face_embedding_json (TEXT)",
+          "face_quality (DECIMAL)",
+          "enrollment_type (TEXT)",
+          "images_used (INTEGER)",
+          "system_version (TEXT)",
+          "motion_optimized (BOOLEAN)",
+          "is_active (BOOLEAN)",
+          "created_at (TIMESTAMP)",
+          "updated_at (TIMESTAMP)"
+        ],
+        "indexes": ["student_id", "is_active"],
+        "foreign_keys": ["student_id -> users.school_id"],
+        "constraints": ["face_quality BETWEEN 0.0 AND 1.0"]
+      },
+      "motion_captures": {
+        "description": "บันทึกการจับภาพด้วย Motion Detection",
+        "columns": [
+          "id (SERIAL, PK)",
+          "session_id (UUID, FK)",
+          "capture_time (TIMESTAMP)",
+          "capture_type (TEXT)",
+          "trigger_type (TEXT)",
+          "motion_strength (DECIMAL)",
+          "processing_phase (TEXT)",
+          "faces_detected (INTEGER)",
+          "faces_recognized (INTEGER)",
+          "new_records (INTEGER)",
+          "processing_time_ms (INTEGER)",
+          "processing_status (TEXT)",
+          "block_reason (TEXT)",
+          "queue_priority (INTEGER)",
+          "device_id (TEXT)",
+          "force_capture (BOOLEAN)",
+          "error_message (TEXT)",
+          "created_at (TIMESTAMP)"
+        ],
+        "indexes": ["session_id", "capture_time", "processing_status"],
+        "foreign_keys": ["session_id -> attendance_sessions.id"]
+      }
+    },
+    "rls_policies": {
+      "users": [
+        "Users can view their own data",
+        "Users can update their own data"
+      ],
+      "classes": [
+        "Teachers can manage their own classes",
+        "Students can view enrolled classes"
+      ],
+      "student_enrollments": [
+        "Students can view their enrollments",
+        "Teachers can view class enrollments"
+      ],
+      "attendance_sessions": [
+        "Teachers can manage their sessions",
+        "Students can view session info for enrolled classes"
+      ],
+      "attendance_records": [
+        "Students can view their own records",
+        "Teachers can view records for their sessions"
+      ],
+      "student_face_embeddings": [
+        "Users can manage their own face data"
+      ],
+      "motion_captures": [
+        "Teachers can view captures for their sessions"
+      ]
+    },
+    "backup": {
+      "enabled": true,
+      "frequency": "daily",
+      "retention_days": 30,
+      "exclude_tables": ["motion_captures"],
+      "include_face_data": false
+    }
+  },
+  "migrations": {
+    "enabled": true,
+    "directory": "./sql_scripts",
+    "auto_run": false,
+    "files": [
+      "01_create_tables.sql",
+      "02_face_embeddings.sql", 
+      "03_motion_detection.sql",
+      "04_rls_policies.sql",
+      "05_seed_data.sql"
+    ]
+  }
+}
