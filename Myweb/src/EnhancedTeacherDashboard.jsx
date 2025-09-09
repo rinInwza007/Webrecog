@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
 import { supabase } from './supabaseClient'
 import ClassCodeDisplay from './ClassCodeDisplay'
+import LiveVideoStream from './LiveVideoStream'
 
 const EnhancedTeacherDashboard = () => {
   const { user, signOut } = useAuth()
@@ -64,95 +65,254 @@ const EnhancedTeacherDashboard = () => {
   }, [currentSession])
 
   const fetchTeacherData = async () => {
-    if (!user) return
+  if (!user) return
 
-    try {
-      console.log('Fetching data for user:', { id: user.id, email: user.email })
+  try {
+    console.log('🔍 Fetching data for user:', { id: user.id, email: user.email })
 
-      // ตรวจสอบข้อมูลผู้ใช้ใน database
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('user_id', user.id)
-        .single()
+    // ตรวจสอบข้อมูลผู้ใช้ใน database
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
 
-      if (userError) {
-        console.error('User data error:', userError)
-      } else {
-        console.log('User data from database:', userData)
-      }
+    if (userError) {
+      console.error('User data error:', userError)
+    } else {
+      console.log('User data from database:', userData)
+    }
 
-      // Fetch classes
-      const { data: classesData, error: classesError } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('teacher_id', user.id)
-        .order('created_at', { ascending: false })
+    // Fetch classes
+    const { data: classesData, error: classesError } = await supabase
+      .from('classes')
+      .select('*')
+      .eq('teacher_id', user.id)
+      .order('created_at', { ascending: false })
 
-      if (classesError) throw classesError
-      setClasses(classesData || [])
+    if (classesError) throw classesError
+    console.log(`📚 Found ${classesData?.length || 0} classes`)
+    setClasses(classesData || [])
 
-      // Fetch active sessions
-      const { data: sessionsData, error: sessionsError } = await supabase
+    // Fetch active sessions with better error handling
+    const { data: sessionsData, error: sessionsError } = await supabase
+      .from('attendance_sessions')
+      .select(`
+        *,
+        classes!inner(subject_name, class_code)
+      `)
+      .eq('teacher_email', user.email)
+      .eq('status', 'active')
+      .order('start_time', { ascending: false })
+
+    if (sessionsError) {
+      console.error('Sessions query error:', sessionsError)
+      // ลองใช้ query แบบง่ายกว่า
+      const { data: simpleSessionsData, error: simpleError } = await supabase
         .from('attendance_sessions')
-        .select(`
-          *,
-          classes!inner(subject_name, class_code)
-        `)
+        .select('*')
         .eq('teacher_email', user.email)
         .eq('status', 'active')
         .order('start_time', { ascending: false })
-
-      if (sessionsError) throw sessionsError
+      
+      if (simpleError) {
+        throw simpleError
+      }
+      
+      console.log('📊 Using simple sessions query:', simpleSessionsData)
+      setSessions(simpleSessionsData || [])
+      
+      // ดึงข้อมูล classes แยก
+      if (simpleSessionsData && simpleSessionsData.length > 0) {
+        const sessionWithClasses = []
+        for (const session of simpleSessionsData) {
+          const { data: classData } = await supabase
+            .from('classes')
+            .select('subject_name, class_code')
+            .eq('class_id', session.class_id)
+            .single()
+          
+          sessionWithClasses.push({
+            ...session,
+            classes: classData || { subject_name: 'Unknown', class_code: 'N/A' }
+          })
+        }
+        setSessions(sessionWithClasses)
+      }
+    } else {
+      console.log(`📊 Found ${sessionsData?.length || 0} sessions`)
       setSessions(sessionsData || [])
+    }
 
-      // Set current session if exists
-      if (sessionsData && sessionsData.length > 0) {
-        setCurrentSession(sessionsData[0])
-        await fetchAttendanceRecords(sessionsData[0].id)
-      } else {
-        setCurrentSession(null)
-        setAttendanceRecords([])
+    // Set current session with motion detection preference
+    const activeSessions = sessionsData || []
+    if (activeSessions.length > 0) {
+      // ให้ความสำคัญกับ motion detection sessions
+      const motionSession = activeSessions.find(s => s.session_type === 'motion_detection')
+      const selectedSession = motionSession || activeSessions[0]
+      
+      console.log(`🎯 Selected session:`, {
+        id: selectedSession.id,
+        type: selectedSession.session_type,
+        class: selectedSession.classes?.subject_name
+      })
+      
+      setCurrentSession(selectedSession)
+      await fetchAttendanceRecords(selectedSession.id)
+    } else {
+      console.log('ℹ️ No active sessions found')
+      setCurrentSession(null)
+      setAttendanceRecords([])
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching teacher data:', error)
+  } finally {
+    setLoading(false)
+  }
+}
+  const fetchAttendanceRecords = async (sessionId) => {
+  try {
+    console.log(`🔍 Fetching attendance for session: ${sessionId}`)
+    
+    // ใช้ query ที่ปลอดภัยโดยไม่พึ่ง foreign key
+    const { data: records, error } = await supabase
+      .from('attendance_records')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('check_in_time', { ascending: false })
+
+    if (error) {
+      console.error('❌ Supabase attendance error:', error)
+      throw error
+    }
+
+    console.log(`📊 Found ${records?.length || 0} attendance records`)
+
+    // เพิ่มข้อมูล users แยกเป็น batch เพื่อประสิทธิภาพดีขึ้น
+    const enrichedRecords = []
+    
+    if (records && records.length > 0) {
+      // สร้างรายการ email ที่ไม่ซ้ำ
+      const uniqueEmails = [...new Set(records.map(r => r.student_email))]
+      
+      // ดึงข้อมูล users ทั้งหมดในครั้งเดียว
+      const { data: usersData, error: usersError } = await supabase
+        .from('users')
+        .select('email, full_name, school_id')
+        .in('email', uniqueEmails)
+
+      if (usersError) {
+        console.warn('⚠️ Error fetching users data:', usersError)
       }
 
-    } catch (error) {
-      console.error('Error fetching teacher data:', error)
-    } finally {
-      setLoading(false)
+      // สร้าง Map สำหรับ lookup ที่เร็วขึ้น
+      const usersMap = new Map()
+      if (usersData) {
+        usersData.forEach(user => {
+          usersMap.set(user.email, user)
+        })
+      }
+
+      // รวมข้อมูล attendance กับ users
+      for (const record of records) {
+        const userData = usersMap.get(record.student_email)
+        
+        enrichedRecords.push({
+          ...record,
+          users: userData || { 
+            full_name: 'Unknown User', 
+            school_id: record.student_id || 'N/A',
+            email: record.student_email
+          }
+        })
+      }
     }
+
+    setAttendanceRecords(enrichedRecords)
+    console.log(`✅ Successfully loaded ${enrichedRecords.length} attendance records`)
+    
+  } catch (error) {
+    console.error('❌ Error fetching attendance records:', error)
+    setAttendanceRecords([]) // ตั้งค่าเป็น array ว่างเมื่อมีข้อผิดพลาด
+  }
+}
+const handleManualCaptureFromVideo = async (imageBlob) => {
+  if (!currentSession) {
+    alert('ไม่พบเซสชันที่ใช้งานอยู่')
+    return
   }
 
-  const fetchAttendanceRecords = async (sessionId) => {
-    try {
-      const { data, error } = await supabase
-        .from('attendance_records')
-        .select(`
-          *,
-          users!attendance_records_student_email_fkey(full_name, school_id)
-        `)
-        .eq('session_id', sessionId)
-        .order('check_in_time', { ascending: false })
+  setActionLoading(true)
 
-      if (error) throw error
-      setAttendanceRecords(data || [])
-    } catch (error) {
-      console.error('Error fetching attendance records:', error)
+  try {
+    const formData = new FormData()
+    formData.append('session_id', currentSession.id)
+    formData.append('image', imageBlob, 'manual_capture.jpg')
+    formData.append('force_capture', 'true')
+
+    const response = await fetch(`${FASTAPI_URL}/api/motion/manual-capture`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || 'Failed to take manual capture')
     }
+
+    const result = await response.json()
+    
+    alert(`📸 Manual Capture สำเร็จ!\n\nพบใบหน้า: ${result.faces_detected} คน\nPriority: ${result.processing_priority}`)
+    
+    // Refresh attendance records
+    setTimeout(() => {
+      fetchAttendanceRecords(currentSession.id)
+    }, 2000)
+    
+  } catch (error) {
+    console.error('Error taking manual capture:', error)
+    alert('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message)
+  } finally {
+    setActionLoading(false)
   }
+}
 
   const fetchMotionStats = async () => {
-    if (!currentSession) return
+  if (!currentSession) return
 
-    try {
-      const response = await fetch(`${FASTAPI_URL}/api/motion/session/${currentSession.id}/live-stats`)
-      if (response.ok) {
-        const data = await response.json()
+  try {
+    console.log(`🔍 Fetching motion stats for session: ${currentSession.id}`)
+    console.log(`🔍 Session type: ${currentSession.session_type || 'unknown'}`)
+    
+    const response = await fetch(`${FASTAPI_URL}/api/motion/session/${currentSession.id}/live-stats`)
+    
+    console.log(`📡 Motion API Response status: ${response.status}`)
+    
+    if (response.ok) {
+      const data = await response.json()
+      console.log('✅ Motion stats received:', data)
+      
+      // ตรวจสอบว่าเป็น motion detection session จริงไหม
+      if (data.session_type === 'motion_detection' || data.success) {
         setMotionStats(data)
+      } else {
+        console.log(`ℹ️ Session is not motion detection type: ${data.session_type}`)
+        setMotionStats({
+          ...data,
+          isMotionSession: false
+        })
       }
-    } catch (error) {
-      console.error('Error fetching motion stats:', error)
+    } else {
+      const errorText = await response.text()
+      console.error(`❌ Motion API error: ${response.status}`, errorText)
+      setMotionStats(null)
     }
+  } catch (error) {
+    console.error('❌ Error fetching motion stats:', error)
+    setMotionStats(null)
   }
+}
 
   const generateClassCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
@@ -261,28 +421,67 @@ const EnhancedTeacherDashboard = () => {
   }
 
   const endSession = async (sessionId) => {
-    if (!confirm('คุณต้องการจบเซสชันนี้หรือไม่?')) return
+  if (!confirm('คุณต้องการจบเซสชันนี้หรือไม่?')) return
 
-    setActionLoading(true)
+  setActionLoading(true)
 
-    try {
-      const response = await fetch(`${FASTAPI_URL}/api/session/${sessionId}/end-motion`, {
-        method: 'PUT'
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to end session')
-      }
-
-      alert('จบเซสชันสำเร็จ!')
-      fetchTeacherData()
-    } catch (error) {
-      console.error('Error ending session:', error)
-      alert('เกิดข้อผิดพลาดในการจบเซสชัน: ' + error.message)
-    } finally {
-      setActionLoading(false)
+  try {
+    console.log(`🛑 Ending session: ${sessionId}`)
+    
+    // ลองใช้ endpoint ที่เหมาะสมตาม session type
+    let endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end`
+    
+    // ถ้าเป็น motion detection session ใช้ endpoint เฉพาะ
+    if (currentSession?.session_type === 'motion_detection') {
+      endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end-motion`
     }
+    
+    console.log(`📡 Using endpoint: ${endpoint}`)
+    
+    const response = await fetch(endpoint, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    console.log(`📡 End session response status: ${response.status}`)
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error('❌ End session error:', errorData)
+      throw new Error(errorData.detail || `Failed to end session (${response.status})`)
+    }
+
+    const result = await response.json()
+    console.log('✅ Session ended successfully:', result)
+
+    alert(`✅ จบเซสชันสำเร็จ!\n\nSession ID: ${sessionId}\nType: ${result.session_type || 'Unknown'}`)
+    
+    // รีเฟรชข้อมูล
+    fetchTeacherData()
+    
+  } catch (error) {
+    console.error('❌ Error ending session:', error)
+    alert(`❌ เกิดข้อผิดพลาดในการจบเซสชัน:\n\n${error.message}`)
+  } finally {
+    setActionLoading(false)
   }
+}
+
+// เพิ่ม function สำหรับ debug table schema
+const debugTableSchema = async (tableName) => {
+  try {
+    const response = await fetch(`${FASTAPI_URL}/api/debug/schema/${tableName}`)
+    if (response.ok) {
+      const data = await response.json()
+      console.log(`📊 Table ${tableName} schema:`, data)
+      return data
+    }
+  } catch (error) {
+    console.error(`Error checking ${tableName} schema:`, error)
+  }
+}
 
   const startCamera = async () => {
     try {
@@ -412,87 +611,117 @@ const EnhancedTeacherDashboard = () => {
     )
   }
 
-  return (
+  return ( 
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
       <header className="bg-white shadow-lg border-b border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">🎯 Enhanced Teacher Dashboard</h1>
-              <p className="text-gray-600 mt-1">Motion Detection Attendance System - {user?.user_metadata?.full_name || user?.email}</p>
-            </div>
-            <button
-              onClick={handleSignOut}
-              className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2 shadow-md"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span>ออกจากระบบ</span>
-            </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center py-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">🎯 Enhanced Teacher Dashboard</h1>
+            <p className="text-gray-600 mt-1">Motion Detection Attendance System - {user?.user_metadata?.full_name || user?.email}</p>
           </div>
+          <button
+            onClick={handleSignOut}
+            className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2 shadow-md"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span>ออกจากระบบ</span>
+          </button>
         </div>
-      </header>
+      </div>
+    </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Current Session Status */}
-        {currentSession && (
-          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg text-white p-6 mb-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold">🎯 เซสชันที่ใช้งานอยู่</h3>
-                <p className="mt-1">{currentSession.classes?.subject_name} ({currentSession.classes?.class_code})</p>
+      {/* Current Session Status */}
+      {currentSession && (
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg text-white p-6 mb-8">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-xl font-bold">🎯 เซสชันที่ใช้งานอยู่</h3>
+              <p className="mt-1">{currentSession.classes?.subject_name} ({currentSession.classes?.class_code})</p>
+              <p className="text-green-100 text-sm">
+                เริ่มเมื่อ: {new Date(currentSession.start_time).toLocaleString('th-TH')}
+              </p>
+              {currentSession.session_type && (
                 <p className="text-green-100 text-sm">
-                  เริ่มเมื่อ: {new Date(currentSession.start_time).toLocaleString('th-TH')}
+                  ประเภท: {currentSession.session_type === 'motion_detection' ? 'Motion Detection' : currentSession.session_type}
                 </p>
-              </div>
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => setShowManualCaptureModal(true)}
-                  className="bg-white text-green-600 px-4 py-2 rounded-lg hover:bg-green-50 transition-colors font-medium"
-                >
-                  📸 Manual Capture
-                </button>
-                <button
-                  onClick={() => setShowSessionDetailsModal(currentSession)}
-                  className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors"
-                >
-                  📊 ดูรายละเอียด
-                </button>
-                <button
-                  onClick={() => endSession(currentSession.id)}
-                  disabled={actionLoading}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  🛑 จบเซสชัน
-                </button>
-              </div>
+              )}
             </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowManualCaptureModal(true)}
+                disabled={currentSession.session_type !== 'motion_detection'}
+                className="bg-white text-green-600 px-4 py-2 rounded-lg hover:bg-green-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                📸 Manual Capture
+              </button>
+              <button
+                onClick={() => setShowSessionDetailsModal(currentSession)}
+                className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors"
+              >
+                📊 ดูรายละเอียด
+              </button>
+              <button
+                onClick={() => endSession(currentSession.id)}
+                disabled={actionLoading}
+                className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                🛑 จบเซสชัน
+              </button>
+            </div>
+          </div>
             
             {/* Motion Stats */}
-            {motionStats && (
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Motion Events</p>
-                  <p className="text-xl font-bold">{motionStats.live_stats?.motion_events || 0}</p>
-                </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Snapshots</p>
-                  <p className="text-xl font-bold">{motionStats.live_stats?.snapshots_taken || 0}</p>
-                </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Efficiency</p>
-                  <p className="text-xl font-bold">{Math.round((motionStats.live_stats?.snapshot_efficiency || 0) * 100)}%</p>
-                </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Queue Size</p>
-                  <p className="text-xl font-bold">{motionStats.processing?.total_queue_size || 0}</p>
-                </div>
-              </div>
-            )}
+            {motionStats && currentSession && (
+  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="bg-green-700 rounded-lg p-3">
+      <p className="text-green-100 text-xs">
+        {motionStats.session_type === 'motion_detection' ? 'Motion Events' : 'Total Events'}
+      </p>
+      <p className="text-xl font-bold">{motionStats.live_stats?.motion_events || 0}</p>
+    </div>
+    <div className="bg-green-700 rounded-lg p-3">
+      <p className="text-green-100 text-xs">
+        {motionStats.session_type === 'motion_detection' ? 'Snapshots' : 'Captures'}
+      </p>
+      <p className="text-xl font-bold">{motionStats.live_stats?.snapshots_taken || 0}</p>
+    </div>
+    <div className="bg-green-700 rounded-lg p-3">
+      <p className="text-green-100 text-xs">Efficiency</p>
+      <p className="text-xl font-bold">
+        {Math.round((motionStats.live_stats?.snapshot_efficiency || 0) * 100)}%
+      </p>
+    </div>
+    <div className="bg-green-700 rounded-lg p-3">
+      <p className="text-green-100 text-xs">Queue Size</p>
+      <p className="text-xl font-bold">{motionStats.processing?.total_queue_size || 0}</p>
+    </div>
+    
+    {/* แสดง session type สำหรับ debug */}
+    {motionStats.session_type && motionStats.session_type !== 'motion_detection' && (
+      <div className="col-span-2 md:col-span-4 bg-yellow-600 rounded-lg p-3">
+        <p className="text-yellow-100 text-xs">Session Type</p>
+        <p className="text-sm font-bold text-yellow-100">
+          {motionStats.session_type} (Limited motion features)
+        </p>
+      </div>
+    )}
+  </div>
+)}
           </div>
         )}
+          <div className="mb-8">
+  <LiveVideoStream
+    currentSession={currentSession}
+    isSessionActive={currentSession !== null}
+    onManualCapture={handleManualCaptureFromVideo}
+    motionStats={motionStats}
+  />
+</div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -507,6 +736,8 @@ const EnhancedTeacherDashboard = () => {
                 <p className="text-sm font-medium text-gray-600">คลาสที่สอน</p>
                 <p className="text-3xl font-bold text-gray-900">{classes.length}</p>
               </div>
+              
+              
             </div>
           </div>
 

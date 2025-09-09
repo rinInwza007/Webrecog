@@ -1348,42 +1348,218 @@ async def process_manual_teacher_motion_capture(item: Dict):
             pass
 
 # ==================== Motion Session Management ====================
-
-@app.put("/api/session/{session_id}/end-motion")
-async def end_motion_detection_session(session_id: str):
-    """End motion detection attendance session"""
+@app.put("/api/session/{session_id}/end")
+async def end_any_session(session_id: str):
+    """End any type of attendance session"""
     try:
-        # Validate and end session
+        logger.info(f"🛑 Ending session: {session_id}")
+        
+        # ตรวจสอบว่า session มีอยู่
+        session_check = supabase.table('attendance_sessions').select('*').eq('id', session_id).eq('status', 'active').single().execute()
+        
+        if not session_check.data:
+            logger.warning(f"Active session not found: {session_id}")
+            raise HTTPException(status_code=404, detail="Active session not found")
+        
+        session_data = session_check.data
+        session_type = session_data.get('session_type', 'unknown')
+        
+        # อัพเดท session status
         result = supabase.table('attendance_sessions').update({
             'status': 'ended',
-            'ended_at': datetime.now().isoformat(),
+            'end_time': datetime.now().isoformat(),
             'updated_at': datetime.now().isoformat()
-        }).eq('id', session_id).eq('session_type', 'motion_detection').execute()
+        }).eq('id', session_id).execute()
         
         if not result.data:
-            raise HTTPException(status_code=404, detail="Motion detection session not found")
+            logger.error(f"Failed to update session status for {session_id}")
+            raise HTTPException(status_code=500, detail="Failed to end session")
         
-        # Remove from motion session manager
-        motion_session_manager.remove_session(session_id)
+        # Remove from motion session manager if it's a motion session
+        if session_type == 'motion_detection':
+            motion_session_manager.remove_session(session_id)
         
-        logger.info(f"📝 Motion detection session ended: {session_id}")
-        
-        # Generate final statistics
-        stats = await get_motion_session_statistics_internal(session_id)
+        logger.info(f"✅ Session ended successfully: {session_id} (type: {session_type})")
         
         return {
             "success": True,
-            "message": "Motion detection session ended successfully",
+            "message": f"Session ended successfully",
             "session_id": session_id,
-            "session_type": "motion_detection",
+            "session_type": session_type,
+            "ended_at": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error ending session: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to end session: {str(e)}")
+
+
+# เพิ่ม endpoint สำหรับตรวจสอบ database schema
+@app.get("/api/debug/schema/{table_name}")
+async def check_table_schema(table_name: str):
+    """Debug endpoint to check table schema"""
+    try:
+        # ตรวจสอบ columns ในตาราง
+        result = supabase.table(table_name).select('*').limit(1).execute()
+        
+        if result.data and len(result.data) > 0:
+            columns = list(result.data[0].keys())
+        else:
+            # ถ้าไม่มีข้อมูล ลองใช้ describe table (PostgreSQL specific)
+            columns = ["No data to determine schema"]
+        
+        return {
+            "success": True,
+            "table_name": table_name,
+            "columns": columns,
+            "sample_data": result.data[0] if result.data else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking schema for {table_name}: {e}")
+        return {
+            "success": False,
+            "table_name": table_name,
+            "error": str(e)
+        }
+        
+@app.put("/api/session/{session_id}/end-motion")
+async def end_motion_detection_session(session_id: str):
+    """End motion detection attendance session (flexible version)"""
+    try:
+        logger.info(f"🛑 Ending session: {session_id}")
+        
+        # ขั้นตอน 1: ตรวจสอบว่า session มีอยู่หรือไม่ (ไม่จำกัด type หรือ status)
+        session_check = supabase.table('attendance_sessions').select('*').eq('id', session_id).execute()
+        
+        if not session_check.data or len(session_check.data) == 0:
+            logger.warning(f"Session not found: {session_id}")
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        
+        session_data = session_check.data[0]
+        current_status = session_data.get('status')
+        session_type = session_data.get('session_type', 'unknown')
+        
+        logger.info(f"📊 Found session: {session_id}, status: {current_status}, type: {session_type}")
+        
+        # ขั้นตอน 2: ตรวจสอบว่า session ยังไม่ได้จบหรือไม่
+        if current_status == 'ended':
+            logger.info(f"Session {session_id} is already ended")
+            return {
+                "success": True,
+                "message": "Session was already ended",
+                "session_id": session_id,
+                "session_type": session_type,
+                "status": "already_ended",
+                "ended_at": session_data.get('end_time') or session_data.get('updated_at')
+            }
+        
+        # ขั้นตอน 3: อัพเดท session โดยใช้ id เพียงอย่างเดียว
+        update_data = {
+            'status': 'ended',
+            'end_time': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        result = supabase.table('attendance_sessions').update(update_data).eq('id', session_id).execute()
+        
+        if not result.data or len(result.data) == 0:
+            logger.error(f"Failed to update session {session_id}")
+            raise HTTPException(status_code=500, detail="Failed to update session status")
+        
+        logger.info(f"✅ Session updated successfully: {session_id}")
+        
+        # ขั้นตอน 4: ลบ motion session manager (ถ้าเป็น motion session)
+        if session_type == 'motion_detection':
+            motion_session_manager.remove_session(session_id)
+            logger.info(f"🗑️ Removed from motion session manager: {session_id}")
+        
+        # ขั้นตอน 5: สร้าง response
+        try:
+            # ลองสร้าง statistics (แต่ไม่ให้ error หยุดการทำงาน)
+            if session_type == 'motion_detection':
+                stats = await get_motion_session_statistics_internal(session_id)
+            else:
+                stats = {"message": f"Basic session ended (type: {session_type})"}
+        except Exception as stats_error:
+            logger.warning(f"Could not generate statistics: {stats_error}")
+            stats = {"error": "Could not generate statistics", "reason": str(stats_error)}
+        
+        return {
+            "success": True,
+            "message": f"Session ended successfully",
+            "session_id": session_id,
+            "session_type": session_type,
+            "previous_status": current_status,
+            "ended_at": datetime.now().isoformat(),
             "final_statistics": stats
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error ending motion detection session: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to end motion session: {str(e)}")
+        logger.error(f"❌ Error ending session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to end session: {str(e)}")
+
+
+# เพิ่ม endpoint debug สำหรับตรวจสอบ session
+@app.get("/api/session/{session_id}/debug")
+async def debug_session_info(session_id: str):
+    """Debug endpoint to check session information"""
+    try:
+        # ดึงข้อมูล session
+        session_result = supabase.table('attendance_sessions').select('*').eq('id', session_id).execute()
+        
+        if not session_result.data:
+            return {
+                "session_found": False,
+                "session_id": session_id,
+                "message": "Session not found"
+            }
+        
+        session_data = session_result.data[0]
+        
+        # ตรวจสอบใน motion session manager
+        motion_stats = motion_session_manager.get_session_stats(session_id)
+        
+        # ดูข้อมูล motion captures
+        try:
+            captures_result = supabase.table('motion_captures').select('*').eq('session_id', session_id).limit(5).execute()
+            recent_captures = captures_result.data or []
+        except:
+            recent_captures = []
+        
+        # ดูข้อมูล attendance records
+        try:
+            attendance_result = supabase.table('attendance_records').select('*').eq('session_id', session_id).limit(5).execute()
+            attendance_records = attendance_result.data or []
+        except:
+            attendance_records = []
+        
+        return {
+            "session_found": True,
+            "session_id": session_id,
+            "session_data": session_data,
+            "motion_stats": motion_stats,
+            "recent_captures_count": len(recent_captures),
+            "attendance_records_count": len(attendance_records),
+            "recent_captures": recent_captures,
+            "recent_attendance": attendance_records,
+            "can_end": {
+                "by_id_only": True,
+                "by_type_and_status": session_data.get('session_type') == 'motion_detection' and session_data.get('status') == 'active'
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error debugging session {session_id}: {e}")
+        return {
+            "session_found": False,
+            "session_id": session_id,
+            "error": str(e)
+        }
 
 @app.get("/api/session/{session_id}/motion-statistics")
 async def get_motion_session_statistics(session_id: str):
@@ -1670,14 +1846,69 @@ async def get_motion_system_status():
 async def get_live_motion_stats(session_id: str):
     """Get live motion detection statistics for a session"""
     try:
+        logger.info(f"📊 Getting live stats for session: {session_id}")
+        
+        # ตรวจสอบ session ว่ามีอยู่จริงไหม
+        session_result = supabase.table('attendance_sessions').select('*').eq('id', session_id).single().execute()
+        
+        if not session_result.data:
+            logger.warning(f"Session not found: {session_id}")
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        
+        session_data = session_result.data
+        
+        # ตรวจสอบว่าเป็น motion detection session ไหม
+        if session_data.get('session_type') != 'motion_detection':
+            logger.warning(f"Session {session_id} is not a motion detection session: {session_data.get('session_type')}")
+            
+            # ส่งข้อมูล default สำหรับ non-motion sessions
+            return {
+                "success": True,
+                "session_id": session_id,
+                "session_type": session_data.get('session_type', 'unknown'),
+                "timestamp": datetime.now().isoformat(),
+                "message": f"Session is not a motion detection session (type: {session_data.get('session_type')})",
+                "live_stats": {
+                    "motion_events": 0,
+                    "snapshots_taken": 0,
+                    "snapshot_efficiency": 0,
+                    "last_snapshot": None
+                },
+                "recent_activity": {
+                    "total_captures_last_hour": 0,
+                    "successful_captures": 0,
+                    "success_rate": 0,
+                    "motion_strength_distribution": {"weak": 0, "moderate": 0, "strong": 0}
+                },
+                "processing": {
+                    "queue_items_for_session": 0,
+                    "total_queue_size": 0
+                },
+                "hourly_events": {},
+                "motion_history": []
+            }
+        
         # Get motion session stats
         motion_stats = motion_session_manager.get_session_stats(session_id)
         
+        # ถ้าไม่มี motion stats ให้สร้าง entry ใหม่
         if not motion_stats:
-            raise HTTPException(status_code=404, detail="Motion session not found")
+            logger.info(f"Creating motion session entry for {session_id}")
+            motion_session_manager.create_session(session_id, {
+                'motion_threshold': session_data.get('motion_threshold', DEFAULT_MOTION_THRESHOLD),
+                'cooldown_seconds': session_data.get('cooldown_seconds', MOTION_COOLDOWN_SECONDS),
+                'max_snapshots_per_hour': session_data.get('max_snapshots_per_hour', MAX_SNAPSHOTS_PER_HOUR),
+                'class_id': session_data.get('class_id'),
+                'teacher_email': session_data.get('teacher_email')
+            })
+            motion_stats = motion_session_manager.get_session_stats(session_id)
         
         # Get recent captures (last hour)
-        recent_captures = supabase.table('motion_captures').select('*').eq('session_id', session_id).gte('created_at', (datetime.now() - timedelta(hours=1)).isoformat()).execute()
+        try:
+            recent_captures = supabase.table('motion_captures').select('*').eq('session_id', session_id).gte('created_at', (datetime.now() - timedelta(hours=1)).isoformat()).execute()
+        except Exception as e:
+            logger.warning(f"Could not fetch motion_captures: {e}")
+            recent_captures = type('obj', (object,), {'data': []})()
         
         # Calculate live metrics
         total_captures = len(recent_captures.data or [])
@@ -1692,38 +1923,60 @@ async def get_live_motion_stats(session_id: str):
             'strong': len([s for s in motion_strengths if s >= 0.5])
         }
         
-        # Processing queue status for this session
-        queue_items_for_session = 0  # Would need to implement queue inspection
-        
         return {
             "success": True,
             "session_id": session_id,
+            "session_type": session_data.get('session_type'),
             "timestamp": datetime.now().isoformat(),
             "live_stats": {
-                "motion_events": motion_stats['motion_events'],
-                "snapshots_taken": motion_stats['snapshots_taken'],
-                "snapshot_efficiency": motion_stats['snapshots_taken'] / motion_stats['motion_events'] if motion_stats['motion_events'] > 0 else 0,
-                "last_snapshot": motion_stats['last_snapshot'].isoformat() if motion_stats['last_snapshot'] else None
+                "motion_events": motion_stats.get('motion_events', 0),
+                "snapshots_taken": motion_stats.get('snapshots_taken', 0),
+                "snapshot_efficiency": motion_stats.get('snapshots_taken', 0) / max(motion_stats.get('motion_events', 1), 1),
+                "last_snapshot": motion_stats.get('last_snapshot').isoformat() if motion_stats.get('last_snapshot') else None
             },
             "recent_activity": {
                 "total_captures_last_hour": total_captures,
                 "successful_captures": successful_captures,
-                "success_rate": successful_captures / total_captures if total_captures > 0 else 0,
+                "success_rate": successful_captures / max(total_captures, 1),
                 "motion_strength_distribution": strength_distribution
             },
             "processing": {
-                "queue_items_for_session": queue_items_for_session,
-                "total_queue_size": motion_processing_queue.qsize()
+                "queue_items_for_session": 0,
+                "total_queue_size": motion_processing_queue.qsize() if 'motion_processing_queue' in globals() else 0
             },
             "hourly_events": motion_stats.get('hourly_events', {}),
-            "motion_history": motion_stats.get('motion_history', [])[-10:]  # Last 10 events
+            "motion_history": motion_stats.get('motion_history', [])[-10:]
         }
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting live motion stats: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get live stats: {str(e)}")
+        # ส่งข้อมูล default พร้อม error message
+        return {
+            "success": False,
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e),
+            "live_stats": {
+                "motion_events": 0,
+                "snapshots_taken": 0,
+                "snapshot_efficiency": 0,
+                "last_snapshot": None
+            },
+            "recent_activity": {
+                "total_captures_last_hour": 0,
+                "successful_captures": 0,
+                "success_rate": 0,
+                "motion_strength_distribution": {"weak": 0, "moderate": 0, "strong": 0}
+            },
+            "processing": {
+                "queue_items_for_session": 0,
+                "total_queue_size": 0
+            },
+            "hourly_events": {},
+            "motion_history": []
+        }
 
 @app.delete("/api/motion/cache/clear")
 async def clear_motion_cache():
