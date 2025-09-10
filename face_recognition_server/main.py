@@ -31,7 +31,7 @@ load_dotenv()
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", 8000))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.6))
+FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.4))
 
 # Motion Detection Configuration
 MOTION_DETECTION_ENABLED = os.getenv("MOTION_DETECTION_ENABLED", "true").lower() == "true"
@@ -530,29 +530,33 @@ def calculate_face_quality(image_array: np.ndarray, face_location: tuple) -> Dic
         return {"overall_score": 0.0}
 
 def calculate_enhanced_similarity(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-    """Enhanced similarity calculation for motion-triggered processing"""
+    """Enhanced similarity calculation - IMPROVED VERSION"""
     try:
-        # Euclidean distance
-        euclidean_distance = np.linalg.norm(embedding1 - embedding2)
-        euclidean_score = max(0, 1 - euclidean_distance)
+        # Normalize embeddings to unit vectors
+        norm1 = np.linalg.norm(embedding1)
+        norm2 = np.linalg.norm(embedding2)
         
-        # Cosine similarity
-        dot_product = np.dot(embedding1, embedding2)
-        norm_a = np.linalg.norm(embedding1)
-        norm_b = np.linalg.norm(embedding2)
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
         
-        if norm_a == 0 or norm_b == 0:
-            cosine_similarity = 0
-        else:
-            cosine_similarity = dot_product / (norm_a * norm_b)
+        normalized1 = embedding1 / norm1
+        normalized2 = embedding2 / norm2
         
-        # Weighted combination optimized for motion-triggered processing
-        final_score = (euclidean_score * 0.4 + cosine_similarity * 0.6)
+        # Cosine similarity on normalized vectors
+        cosine_sim = np.dot(normalized1, normalized2)
+        cosine_sim = np.clip(cosine_sim, -1.0, 1.0)
+        
+        # Euclidean distance on normalized vectors (range 0-2)
+        euclidean_dist = np.linalg.norm(normalized1 - normalized2)
+        euclidean_sim = max(0.0, (2.0 - euclidean_dist) / 2.0)
+        
+        # Combined score (favor cosine similarity for face recognition)
+        final_score = (cosine_sim * 0.7) + (euclidean_sim * 0.3)
         
         return float(np.clip(final_score, 0, 1))
         
     except Exception as e:
-        logger.error(f"Error calculating similarity: {e}")
+        logger.error(f"Error calculating improved similarity: {e}")
         return 0.0
 
 async def get_enrolled_students_for_class(class_id: str) -> List[str]:
@@ -647,8 +651,42 @@ async def get_enrolled_students_fallback(class_id: str) -> List[str]:
     except Exception as e:
         logger.error(f"Fallback method error: {e}")
         return []
-def process_motion_triggered_faces_optimized(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
-    """Optimized face processing - ลดเวลาจาก 45s เป็น 5-10s"""
+# ========== IMMEDIATE FIXES - เพิ่มเข้าไปในไฟล์ main.py ==========
+
+# 1. แทนที่ฟังก์ชัน calculate_enhanced_similarity (บรรทัด 561)
+def calculate_enhanced_similarity(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+    """Enhanced similarity calculation - IMPROVED VERSION"""
+    try:
+        # Normalize embeddings to unit vectors
+        norm1 = np.linalg.norm(embedding1)
+        norm2 = np.linalg.norm(embedding2)
+        
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+        
+        normalized1 = embedding1 / norm1
+        normalized2 = embedding2 / norm2
+        
+        # Cosine similarity on normalized vectors
+        cosine_sim = np.dot(normalized1, normalized2)
+        cosine_sim = np.clip(cosine_sim, -1.0, 1.0)
+        
+        # Euclidean distance on normalized vectors (range 0-2)
+        euclidean_dist = np.linalg.norm(normalized1 - normalized2)
+        euclidean_sim = max(0.0, (2.0 - euclidean_dist) / 2.0)
+        
+        # Combined score (favor cosine similarity for face recognition)
+        final_score = (cosine_sim * 0.7) + (euclidean_sim * 0.3)
+        
+        return float(np.clip(final_score, 0, 1))
+        
+    except Exception as e:
+        logger.error(f"Error calculating improved similarity: {e}")
+        return 0.0
+
+# 2. แทนที่ฟังก์ชัน process_motion_triggered_faces (บรรทัด 267)
+def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
+    """Process faces with improved logging and optimization"""
     try:
         start_time = time.time()
         
@@ -657,113 +695,108 @@ def process_motion_triggered_faces_optimized(image_array: np.ndarray, enrolled_s
             return []
         
         if not enrolled_students:
-            logger.warning("❌ No enrolled students found!")
+            logger.warning("❌ No enrolled students for motion processing")
             return []
         
-        logger.info(f"📋 Processing with {len(enrolled_students)} enrolled students")
+        logger.info(f"📋 Processing {len(enrolled_students)} enrolled students: {enrolled_students}")
         
         # ปรับขนาดภาพเพื่อเพิ่มความเร็ว
         height, width = image_array.shape[:2]
+        max_dimension = 600  # ลดจาก 800 เป็น 600 เพื่อเร็วขึ้น
         
-        # ลดขนาดภาพถ้าใหญ่เกินไป (เพื่อความเร็ว)
-        max_dimension = 800
         if max(height, width) > max_dimension:
             scale = max_dimension / max(height, width)
             new_width = int(width * scale)
             new_height = int(height * scale)
             
-            import cv2
             image_array = cv2.resize(image_array, (new_width, new_height))
-            logger.info(f"🔧 Resized image from {width}x{height} to {new_width}x{new_height} for faster processing")
+            logger.info(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
         
-        # เลือก model ตาม motion strength (ปรับให้เร็วขึ้น)
-        if motion_strength > 0.3 and config.get('motion_boost', False):
-            model_type = "hog"  # เปลี่ยนจาก cnn เป็น hog เพื่อความเร็ว
-            num_jitters = 1     # ลดจาก 2 เป็น 1
-        else:
-            model_type = "hog"  # ใช้ hog เป็น default เพื่อความเร็ว
-            num_jitters = 1
+        # ใช้ HOG model เพื่อความเร็ว
+        model_type = "hog"
+        num_jitters = 1
         
-        # Detect faces (ใช้ hog model ที่เร็วกว่า)
+        # Detect faces
         face_locations = face_recognition.face_locations(image_array, model=model_type)
         
         if not face_locations:
             logger.info("❌ No faces detected")
             return []
         
-        logger.info(f"👥 Detected {len(face_locations)} faces in {time.time() - start_time:.2f}s")
+        logger.info(f"👥 Detected {len(face_locations)} faces (model: {model_type})")
         
-        # Get face encodings (ลด num_jitters เพื่อความเร็ว)
-        encoding_start = time.time()
+        # Get face encodings
         face_encodings = face_recognition.face_encodings(
             image_array, 
             face_locations, 
             num_jitters=num_jitters
         )
-        encoding_time = time.time() - encoding_start
         
         if not face_encodings:
             logger.warning("❌ No face encodings generated!")
             return []
         
-        logger.info(f"🔢 Generated {len(face_encodings)} encodings in {encoding_time:.2f}s")
+        logger.info(f"🔢 Generated {len(face_encodings)} face encodings")
         
         detected_faces = []
         threshold = config['face_threshold']
         
-        # ปรับ threshold ให้เหมาะสมกับการประมวลผลที่เร็วขึ้น
+        # ปรับ threshold สำหรับ motion events
         if motion_strength > 0.4:
-            threshold *= 0.9  # ลด threshold เล็กน้อยสำหรับ motion events
+            threshold *= 0.9  # ลด threshold สำหรับ strong motion
         elif motion_strength < 0.15:
-            threshold *= 1.1  # เพิ่ม threshold เล็กน้อยสำหรับ weak motion
+            threshold *= 1.1  # เพิ่ม threshold สำหรับ weak motion
         
-        logger.info(f"🎯 Using recognition threshold: {threshold} (adjusted from {config['face_threshold']})")
-        
-        # การเปรียบเทียบแบบ parallel (ถ้าจำเป็น)
-        comparison_start = time.time()
+        logger.info(f"🎯 Using threshold: {threshold:.3f} (base: {config['face_threshold']:.3f})")
         
         for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
             try:
+                logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
+                
                 best_match = None
                 best_similarity = 0.0
-                similarities = {}
+                all_similarities = {}
                 
-                # เปรียบเทียบกับ enrolled students
+                # Compare with enrolled students
                 for student_id in enrolled_students:
                     stored_embedding = get_face_embedding_cached(student_id)
-                    
                     if stored_embedding is None:
+                        logger.debug(f"❌ No embedding for {student_id}")
                         continue
                     
                     similarity = calculate_enhanced_similarity(stored_embedding, encoding)
-                    similarities[student_id] = similarity
+                    all_similarities[student_id] = similarity
+                    
+                    logger.debug(f"  {student_id}: {similarity:.3f}")
                     
                     if similarity > threshold and similarity > best_similarity:
                         best_similarity = similarity
                         best_match = student_id
                 
-                # Log ผลลัพธ์
+                # Log results with more detail
+                logger.info(f"📊 Face {i+1} similarities: {all_similarities}")
+                
                 if best_match:
                     logger.info(f"✅ Face {i+1} recognized as {best_match} (confidence: {best_similarity:.3f})")
                 else:
-                    max_sim = max(similarities.values()) if similarities else 0
-                    logger.info(f"❌ Face {i+1} not recognized. Best similarity: {max_sim:.3f} (threshold: {threshold})")
+                    max_sim = max(all_similarities.values()) if all_similarities else 0
+                    logger.warning(f"❌ Face {i+1} not recognized. Best: {max_sim:.3f} (need: {threshold:.3f})")
                 
-                # คำนวณ quality แบบเร็ว (ถ้าจำเป็น)
-                quality_score = 0.8  # ใช้ค่าคงที่เพื่อความเร็ว หรือคำนวณแบบง่าย
+                # Enhanced quality check for motion-triggered captures
+                quality_score = 0.8  # Default value for speed
                 if config.get('enable_quality_check', False):
                     try:
                         quality_info = calculate_motion_face_quality(image_array, location, motion_strength)
                         quality_score = quality_info['overall_score']
                     except:
-                        quality_score = 0.7  # fallback value
+                        quality_score = 0.7
                 
                 face_info = {
                     'face_index': i,
                     'student_id': best_match,
                     'confidence': float(best_similarity),
                     'verified': best_match is not None and best_similarity > threshold,
-                    'all_similarities': similarities,
+                    'all_similarities': all_similarities,  # เพิ่มข้อมูลนี้สำหรับ debug
                     'threshold_used': threshold,
                     'bounding_box': {
                         'top': int(location[0]),
@@ -773,8 +806,8 @@ def process_motion_triggered_faces_optimized(image_array: np.ndarray, enrolled_s
                     },
                     'quality_score': quality_score,
                     'motion_strength': motion_strength,
-                    'model_used': model_type,
-                    'num_jitters': num_jitters
+                    'processing_time': time.time() - start_time,
+                    'model_used': model_type
                 }
                 
                 detected_faces.append(face_info)
@@ -783,19 +816,180 @@ def process_motion_triggered_faces_optimized(image_array: np.ndarray, enrolled_s
                 logger.error(f"❌ Error processing face {i}: {e}")
                 continue
         
-        comparison_time = time.time() - comparison_start
-        total_time = time.time() - start_time
-        verified_faces = [f for f in detected_faces if f['verified']]
+        processing_time = time.time() - start_time
+        verified_count = len([f for f in detected_faces if f['verified']])
         
-        logger.info(f"📋 Summary: {len(face_locations)} detected → {len(face_encodings)} encoded → {len(verified_faces)} recognized")
-        logger.info(f"⏱️ Timing: Detection={encoding_time:.1f}s, Comparison={comparison_time:.1f}s, Total={total_time:.1f}s")
+        logger.info(f"✅ Processing complete: {len(face_locations)} detected → {len(face_encodings)} encoded → {verified_count} recognized in {processing_time:.2f}s")
         
         return detected_faces
         
     except Exception as e:
-        logger.error(f"❌ Error in optimized face processing: {e}")
+        logger.error(f"❌ Error in motion-triggered face processing: {e}")
         return []
-    
+
+@app.get("/api/debug/face-embeddings/{class_id}")
+async def debug_face_embeddings(class_id: str):
+    """Debug face embeddings for a class"""
+    try:
+        # Get enrolled students
+        enrolled_students = await get_enrolled_students_for_class(class_id)
+        
+        if not enrolled_students:
+            return {
+                "success": False,
+                "message": "No enrolled students found",
+                "class_id": class_id
+            }
+        
+        # Check embeddings for each student
+        embedding_status = {}
+        for student_id in enrolled_students:
+            try:
+                result = supabase.table('student_face_embeddings').select('*').eq('student_id', student_id).eq('is_active', True).execute()
+                
+                if result.data:
+                    embedding_data = result.data[0]
+                    embedding_json = json.loads(embedding_data['face_embedding_json'])
+                    embedding = np.array(embedding_json, dtype=np.float64)
+                    
+                    embedding_status[student_id] = {
+                        "has_embedding": True,
+                        "embedding_shape": embedding.shape,
+                        "face_quality": embedding_data.get('face_quality', 0),
+                        "enrollment_type": embedding_data.get('enrollment_type', 'unknown'),
+                        "created_at": embedding_data.get('created_at'),
+                        "embedding_norm": float(np.linalg.norm(embedding)),  # เพิ่มข้อมูล norm
+                        "embedding_mean": float(np.mean(embedding)),
+                        "embedding_std": float(np.std(embedding))
+                    }
+                else:
+                    embedding_status[student_id] = {
+                        "has_embedding": False,
+                        "reason": "No embedding found in database"
+                    }
+                    
+            except Exception as e:
+                embedding_status[student_id] = {
+                    "has_embedding": False,
+                    "reason": f"Error loading embedding: {str(e)}"
+                }
+        
+        students_with_embeddings = len([s for s in embedding_status.values() if s.get('has_embedding')])
+        
+        return {
+            "success": True,
+            "class_id": class_id,
+            "total_enrolled_students": len(enrolled_students),
+            "students_with_embeddings": students_with_embeddings,
+            "enrollment_rate": students_with_embeddings / len(enrolled_students) if enrolled_students else 0,
+            "embedding_status": embedding_status,
+            "current_threshold": FACE_THRESHOLD,
+            "suggestions": [
+                f"Enrollment rate: {students_with_embeddings}/{len(enrolled_students)} ({students_with_embeddings/len(enrolled_students)*100:.1f}%)",
+                f"Current threshold: {FACE_THRESHOLD}",
+                "Students without embeddings need to enroll first",
+                "Try lowering threshold if recognition rate is low"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in debug face embeddings: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "class_id": class_id
+        }
+@app.post("/api/debug/test-recognition")
+async def test_face_recognition_improved(
+    image: UploadFile = File(...),
+    class_id: str = Form(...),
+    threshold: float = Form(0.5)  # ลด default threshold
+):
+    """Test face recognition with detailed analysis"""
+    try:
+        # Process image
+        image_data = await image.read()
+        image_pil = Image.open(io.BytesIO(image_data))
+        if image_pil.mode != 'RGB':
+            image_pil = image_pil.convert('RGB')
+        
+        image_array = np.array(image_pil)
+        
+        # Get enrolled students
+        enrolled_students = await get_enrolled_students_for_class(class_id)
+        
+        # Test detection
+        face_locations = face_recognition.face_locations(image_array, model="hog")
+        
+        if not face_locations:
+            return {
+                "success": False,
+                "message": "No faces detected in the image",
+                "faces_detected": 0
+            }
+        
+        # Test recognition
+        face_encodings = face_recognition.face_encodings(image_array, face_locations)
+        
+        if not face_encodings:
+            return {
+                "success": False,
+                "message": "Faces detected but no encodings generated",
+                "faces_detected": len(face_locations),
+                "face_encodings": 0
+            }
+        
+        # Test against all enrolled students
+        results = []
+        for i, encoding in enumerate(face_encodings):
+            face_result = {
+                "face_index": i,
+                "location": face_locations[i],
+                "similarities": {},
+                "best_match": None,
+                "best_similarity": 0.0,
+                "normalized_similarities": {}
+            }
+            
+            for student_id in enrolled_students:
+                stored_embedding = get_face_embedding_cached(student_id)
+                if stored_embedding is not None:
+                    # Test both old and new similarity functions
+                    old_similarity = calculate_enhanced_similarity(stored_embedding, encoding)
+                    
+                    face_result["similarities"][student_id] = old_similarity
+                    
+                    if old_similarity > threshold and old_similarity > face_result["best_similarity"]:
+                        face_result["best_match"] = student_id
+                        face_result["best_similarity"] = old_similarity
+            
+            results.append(face_result)
+        
+        return {
+            "success": True,
+            "faces_detected": len(face_locations),
+            "face_encodings_generated": len(face_encodings),
+            "enrolled_students": len(enrolled_students),
+            "threshold_used": threshold,
+            "results": results,
+            "summary": {
+                "total_faces": len(results),
+                "recognized_faces": len([r for r in results if r["best_match"]]),
+                "unrecognized_faces": len([r for r in results if not r["best_match"]])
+            },
+            "recommendations": [
+                f"Recognition rate: {len([r for r in results if r['best_match']])}/{len(results)}",
+                f"Try threshold: {threshold-0.1:.1f}" if len([r for r in results if r["best_match"]]) == 0 else "Threshold seems appropriate",
+                "Consider re-enrolling faces if recognition rate is low"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in test recognition: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 @app.get("/api/debug/database-schema")
 async def debug_database_schema():
     """Debug database schema and relationships"""
