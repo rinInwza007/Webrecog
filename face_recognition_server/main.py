@@ -23,6 +23,12 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 import heapq
+from sklearn.preprocessing import normalize
+from sklearn.metrics.pairwise import cosine_similarity
+import pickle
+import hashlib
+from typing import Tuple
+from scipy.spatial.distance import cdist
 
 # Load environment variables
 load_dotenv()
@@ -333,6 +339,1257 @@ class MotionPriorityQueue:
 motion_processing_queue = MotionPriorityQueue()
 
 # ==================== Enhanced Helper Functions ====================
+def normalize_embedding(embedding: np.ndarray) -> np.ndarray:
+    """Normalize embedding to unit vector for stable comparison"""
+    try:
+        if embedding is None or embedding.size == 0:
+            return None
+        
+        # L2 normalization
+        norm = np.linalg.norm(embedding)
+        if norm == 0:
+            logger.warning("Zero norm embedding detected")
+            return embedding
+        
+        normalized = embedding / norm
+        return normalized.astype(np.float64)
+        
+    except Exception as e:
+        logger.error(f"Error normalizing embedding: {e}")
+        return embedding
+def calculate_advanced_similarity(embedding1: np.ndarray, embedding2: np.ndarray) -> Dict[str, float]:
+    """
+    Advanced similarity calculation with multiple metrics
+    Returns comprehensive similarity analysis
+    """
+    try:
+        # Normalize both embeddings
+        norm_emb1 = normalize_embedding(embedding1)
+        norm_emb2 = normalize_embedding(embedding2)
+        
+        if norm_emb1 is None or norm_emb2 is None:
+            return {
+                'cosine_similarity': 0.0,
+                'euclidean_distance': 2.0,
+                'euclidean_similarity': 0.0,
+                'manhattan_distance': 2.0,
+                'combined_score': 0.0,
+                'confidence_level': 'error'
+            }
+        
+        # 1. Cosine Similarity (most reliable for face embeddings)
+        cosine_sim = np.dot(norm_emb1, norm_emb2)
+        cosine_sim = np.clip(cosine_sim, -1.0, 1.0)
+        
+        # 2. Euclidean Distance (on normalized vectors, range 0-2)
+        euclidean_dist = np.linalg.norm(norm_emb1 - norm_emb2)
+        euclidean_similarity = max(0.0, (2.0 - euclidean_dist) / 2.0)
+        
+        # 3. Manhattan Distance (L1 norm)
+        manhattan_dist = np.sum(np.abs(norm_emb1 - norm_emb2))
+        manhattan_similarity = max(0.0, (2.0 - manhattan_dist) / 2.0)
+        
+        # 4. Weighted combination optimized for face recognition
+        # Cosine similarity is most important for face embeddings
+        combined_score = (
+            cosine_sim * 0.6 +           # Primary metric
+            euclidean_similarity * 0.3 +  # Secondary metric
+            manhattan_similarity * 0.1    # Tertiary metric
+        )
+        
+        # 5. Confidence assessment
+        if combined_score > 0.85:
+            confidence_level = 'very_high'
+        elif combined_score > 0.75:
+            confidence_level = 'high'
+        elif combined_score > 0.65:
+            confidence_level = 'medium'
+        elif combined_score > 0.5:
+            confidence_level = 'low'
+        else:
+            confidence_level = 'very_low'
+        
+        return {
+            'cosine_similarity': float(cosine_sim),
+            'euclidean_distance': float(euclidean_dist),
+            'euclidean_similarity': float(euclidean_similarity),
+            'manhattan_distance': float(manhattan_dist),
+            'manhattan_similarity': float(manhattan_similarity),
+            'combined_score': float(combined_score),
+            'confidence_level': confidence_level
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating advanced similarity: {e}")
+        return {
+            'cosine_similarity': 0.0,
+            'euclidean_distance': 2.0,
+            'euclidean_similarity': 0.0,
+            'manhattan_distance': 2.0,
+            'combined_score': 0.0,
+            'confidence_level': 'error'
+        }
+class AdvancedFaceEmbeddingManager:
+    """Advanced face embedding management with multiple embeddings per person"""
+    
+    def __init__(self):
+        self.embedding_cache = {}
+        self.multi_embedding_cache = {}  # Cache for multiple embeddings
+        self.cache_lock = threading.Lock()
+    
+    def save_multiple_embeddings(self, student_id: str, embeddings: List[np.ndarray], 
+                                qualities: List[float], method: str = 'weighted_centroid') -> bool:
+        """
+        Save multiple face embeddings for one person
+        Methods: 'weighted_centroid', 'best_quality', 'all_separate', 'quality_filtered'
+        """
+        try:
+            if not embeddings or len(embeddings) == 0:
+                logger.error(f"No embeddings provided for {student_id}")
+                return False
+            
+            logger.info(f"🎯 Saving {len(embeddings)} embeddings for {student_id} using {method}")
+            
+            # Normalize all embeddings
+            normalized_embeddings = []
+            valid_qualities = []
+            
+            for i, (embedding, quality) in enumerate(zip(embeddings, qualities)):
+                norm_embedding = normalize_embedding(embedding)
+                if norm_embedding is not None:
+                    normalized_embeddings.append(norm_embedding)
+                    valid_qualities.append(quality)
+                    logger.debug(f"  Embedding {i+1}: quality={quality:.3f}, norm={np.linalg.norm(norm_embedding):.3f}")
+                else:
+                    logger.warning(f"Failed to normalize embedding {i+1} for {student_id}")
+            
+            if not normalized_embeddings:
+                logger.error(f"No valid normalized embeddings for {student_id}")
+                return False
+            
+            # Apply method-specific processing
+            if method == 'weighted_centroid':
+                final_embedding, metadata = self._create_weighted_centroid(normalized_embeddings, valid_qualities)
+            elif method == 'best_quality':
+                final_embedding, metadata = self._select_best_quality(normalized_embeddings, valid_qualities)
+            elif method == 'quality_filtered':
+                final_embedding, metadata = self._quality_filtered_centroid(normalized_embeddings, valid_qualities)
+            elif method == 'all_separate':
+                return self._save_separate_embeddings(student_id, normalized_embeddings, valid_qualities)
+            else:
+                final_embedding = normalized_embeddings[0]
+                metadata = {'method': 'single', 'source_count': 1}
+            
+            # Save to database
+            return  self._save_embedding_to_db(student_id, final_embedding, np.mean(valid_qualities), metadata)
+            
+        except Exception as e:
+            logger.error(f"Error saving multiple embeddings for {student_id}: {e}")
+            return False
+    
+    def _create_weighted_centroid(self, embeddings: List[np.ndarray], qualities: List[float]) -> Tuple[np.ndarray, Dict]:
+        """Create quality-weighted centroid of embeddings"""
+        try:
+            # Convert to numpy arrays
+            embeddings_matrix = np.array(embeddings)
+            weights = np.array(qualities)
+            
+            # Normalize weights
+            weights = weights / np.sum(weights)
+            
+            # Calculate weighted average
+            centroid = np.average(embeddings_matrix, axis=0, weights=weights)
+            
+            # Normalize the result
+            final_embedding = normalize_embedding(centroid)
+            
+            metadata = {
+                'method': 'weighted_centroid',
+                'source_count': len(embeddings),
+                'quality_weights': weights.tolist(),
+                'average_quality': float(np.mean(qualities)),
+                'quality_std': float(np.std(qualities))
+            }
+            
+            logger.info(f"📊 Created weighted centroid from {len(embeddings)} embeddings")
+            return final_embedding, metadata
+            
+        except Exception as e:
+            logger.error(f"Error creating weighted centroid: {e}")
+            return embeddings[0], {'method': 'fallback'}
+    
+    def _select_best_quality(self, embeddings: List[np.ndarray], qualities: List[float]) -> Tuple[np.ndarray, Dict]:
+        """Select the embedding with highest quality"""
+        try:
+            best_idx = np.argmax(qualities)
+            best_embedding = embeddings[best_idx]
+            best_quality = qualities[best_idx]
+            
+            metadata = {
+                'method': 'best_quality',
+                'source_count': len(embeddings),
+                'selected_index': int(best_idx),
+                'selected_quality': float(best_quality),
+                'quality_range': [float(min(qualities)), float(max(qualities))]
+            }
+            
+            logger.info(f"🏆 Selected best quality embedding: {best_quality:.3f}")
+            return best_embedding, metadata
+            
+        except Exception as e:
+            logger.error(f"Error selecting best quality: {e}")
+            return embeddings[0], {'method': 'fallback'}
+    
+    def _quality_filtered_centroid(self, embeddings: List[np.ndarray], qualities: List[float]) -> Tuple[np.ndarray, Dict]:
+        """Create centroid from high-quality embeddings only"""
+        try:
+            # Filter embeddings by quality threshold
+            quality_threshold = np.mean(qualities)  # Use mean as threshold
+            
+            filtered_embeddings = []
+            filtered_qualities = []
+            
+            for emb, qual in zip(embeddings, qualities):
+                if qual >= quality_threshold:
+                    filtered_embeddings.append(emb)
+                    filtered_qualities.append(qual)
+            
+            # Fallback to all embeddings if none pass threshold
+            if not filtered_embeddings:
+                filtered_embeddings = embeddings
+                filtered_qualities = qualities
+            
+            # Create weighted centroid from filtered embeddings
+            weights = np.array(filtered_qualities) / np.sum(filtered_qualities)
+            centroid = np.average(filtered_embeddings, axis=0, weights=weights)
+            final_embedding = normalize_embedding(centroid)
+            
+            metadata = {
+                'method': 'quality_filtered_centroid',
+                'source_count': len(embeddings),
+                'filtered_count': len(filtered_embeddings),
+                'quality_threshold': float(quality_threshold),
+                'average_filtered_quality': float(np.mean(filtered_qualities))
+            }
+            
+            logger.info(f"🔍 Created quality-filtered centroid: {len(filtered_embeddings)}/{len(embeddings)} embeddings used")
+            return final_embedding, metadata
+            
+        except Exception as e:
+            logger.error(f"Error creating quality-filtered centroid: {e}")
+            return embeddings[0], {'method': 'fallback'}
+    
+    def _save_separate_embeddings(self, student_id: str, embeddings: List[np.ndarray], qualities: List[float]) -> bool:
+        """Save multiple embeddings separately for ensemble matching"""
+        try:
+            # Deactivate old embeddings
+            supabase.table('student_face_embeddings').update({
+                'is_active': False,
+                'updated_at': datetime.now().isoformat()
+            }).eq('student_id', student_id).execute()
+            
+            # Save each embedding separately
+            for i, (embedding, quality) in enumerate(zip(embeddings, qualities)):
+                embedding_data = {
+                    'student_id': student_id,
+                    'face_embedding_json': json.dumps(embedding.tolist()),
+                    'face_quality': quality,
+                    'enrollment_type': 'multiple_separate',
+                    'embedding_index': i,
+                    'total_embeddings': len(embeddings),
+                    'system_version': '6.0.0-advanced',
+                    'is_normalized': True,
+                    'is_active': True,
+                    'created_at': datetime.now().isoformat(),
+                    'metadata_json': json.dumps({
+                        'method': 'separate_storage',
+                        'index': i,
+                        'total': len(embeddings)
+                    })
+                }
+                
+                result = supabase.table('student_face_embeddings').insert(embedding_data).execute()
+                if not result.data:
+                    logger.error(f"Failed to save embedding {i} for {student_id}")
+                    return False
+            
+            logger.info(f"✅ Saved {len(embeddings)} separate embeddings for {student_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error saving separate embeddings: {e}")
+            return False
+    
+    async def _save_embedding_to_db(self, student_id: str, embedding: np.ndarray, 
+                                  quality: float, metadata: Dict) -> bool:
+        """Save single processed embedding to database"""
+        try:
+            embedding_data = {
+                'student_id': student_id,
+                'face_embedding_json': json.dumps(embedding.tolist()),
+                'face_quality': quality,
+                'enrollment_type': 'advanced_multiple',
+                'system_version': '6.0.0-advanced',
+                'is_normalized': True,
+                'is_active': True,
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat(),
+                'metadata_json': json.dumps(metadata)
+            }
+            
+            # Deactivate old embeddings
+            supabase.table('student_face_embeddings').update({
+                'is_active': False,
+                'updated_at': datetime.now().isoformat()
+            }).eq('student_id', student_id).execute()
+            
+            # Insert new embedding
+            result = supabase.table('student_face_embeddings').insert(embedding_data).execute()
+            
+            if result.data:
+                # Update cache
+                with self.cache_lock:
+                    self.embedding_cache[student_id] = embedding
+                
+                logger.info(f"✅ Advanced embedding saved for {student_id} (method: {metadata.get('method')})")
+                return True
+            else:
+                logger.error(f"Failed to save advanced embedding for {student_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error saving advanced embedding to database: {e}")
+            return False
+    
+    def get_embedding_advanced(self, student_id: str) -> Optional[np.ndarray]:
+        """Get face embedding with advanced caching and ensemble support"""
+        try:
+            # Check cache first
+            with self.cache_lock:
+                if student_id in self.embedding_cache:
+                    return self.embedding_cache[student_id]
+            
+            # Get from database
+            result = supabase.table('student_face_embeddings').select('*').eq('student_id', student_id).eq('is_active', True).execute()
+            
+            if not result.data:
+                logger.debug(f"No embeddings found for {student_id}")
+                return None
+            
+            # Handle multiple embeddings (ensemble)
+            if len(result.data) > 1:
+                logger.info(f"Found {len(result.data)} embeddings for {student_id}, using ensemble")
+                return self._process_ensemble_embeddings(student_id, result.data)
+            else:
+                # Single embedding
+                embedding_data = result.data[0]
+                embedding_json = json.loads(embedding_data['face_embedding_json'])
+                embedding = np.array(embedding_json, dtype=np.float64)
+                
+                # Ensure normalized
+                if not embedding_data.get('is_normalized', False):
+                    embedding = normalize_embedding(embedding)
+                
+                # Cache the result
+                with self.cache_lock:
+                    self.embedding_cache[student_id] = embedding
+                
+                return embedding
+            
+        except Exception as e:
+            logger.error(f"Error getting advanced embedding for {student_id}: {e}")
+            return None
+    
+    def _process_ensemble_embeddings(self, student_id: str, embedding_records: List[Dict]) -> np.ndarray:
+        """Process multiple embeddings using ensemble method"""
+        try:
+            embeddings = []
+            qualities = []
+            
+            for record in embedding_records:
+                try:
+                    embedding_json = json.loads(record['face_embedding_json'])
+                    embedding = np.array(embedding_json, dtype=np.float64)
+                    
+                    # Ensure normalized
+                    if not record.get('is_normalized', False):
+                        embedding = normalize_embedding(embedding)
+                    
+                    embeddings.append(embedding)
+                    qualities.append(record.get('face_quality', 0.5))
+                    
+                except Exception as e:
+                    logger.warning(f"Error processing embedding record for {student_id}: {e}")
+                    continue
+            
+            if not embeddings:
+                return None
+            
+            # Create weighted ensemble
+            weights = np.array(qualities) / np.sum(qualities)
+            ensemble_embedding = np.average(embeddings, axis=0, weights=weights)
+            final_embedding = normalize_embedding(ensemble_embedding)
+            
+            # Cache the ensemble result
+            with self.cache_lock:
+                self.embedding_cache[student_id] = final_embedding
+            
+            logger.info(f"✅ Created ensemble embedding for {student_id} from {len(embeddings)} sources")
+            return final_embedding
+            
+        except Exception as e:
+            logger.error(f"Error processing ensemble embeddings for {student_id}: {e}")
+            return None
+def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_students: List[str], 
+                                       config: Dict, motion_strength: float = 0.5,
+                                       use_advanced_similarity: bool = True) -> List[Dict]:
+    """Face processing with advanced similarity calculation and detailed analysis"""
+    try:
+        start_time = time.time()
+        embedding_manager = AdvancedFaceEmbeddingManager()
+        
+        if image_array is None or image_array.size == 0:
+            logger.warning("Empty image array")
+            return []
+        
+        if not enrolled_students:
+            logger.warning("No enrolled students")
+            return []
+        
+        logger.info(f"🔍 Advanced processing with {len(enrolled_students)} enrolled students")
+        
+        # Optimized face detection
+        height, width = image_array.shape[:2]
+        max_dimension = 600
+        
+        if max(height, width) > max_dimension:
+            scale = max_dimension / max(height, width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            image_array = cv2.resize(image_array, (new_width, new_height))
+            logger.debug(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
+        
+        # Detect faces
+        face_locations = face_recognition.face_locations(image_array, model="hog")
+        
+        if not face_locations:
+            logger.info("❌ No faces detected")
+            return []
+        
+        logger.info(f"👥 Detected {len(face_locations)} faces")
+        
+        # Get face encodings
+        face_encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=1)
+        
+        if not face_encodings:
+            logger.warning("❌ No face encodings generated")
+            return []
+        
+        detected_faces = []
+        base_threshold = config.get('face_threshold', 0.6)
+        
+        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
+            logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)} with advanced matching")
+            
+            # Normalize the detected encoding
+            norm_encoding = normalize_embedding(encoding)
+            if norm_encoding is None:
+                logger.warning(f"Failed to normalize encoding for face {i+1}")
+                continue
+            
+            # Advanced similarity analysis
+            similarity_results = []
+            
+            for student_id in enrolled_students:
+                stored_embedding = embedding_manager.get_embedding_advanced(student_id)
+                
+                if stored_embedding is None:
+                    logger.debug(f"No advanced embedding found for {student_id}")
+                    continue
+                
+                if use_advanced_similarity:
+                    # Use advanced similarity calculation
+                    similarity_metrics = calculate_advanced_similarity(norm_encoding, stored_embedding)
+                    
+                    similarity_results.append({
+                        'student_id': student_id,
+                        'similarity_score': similarity_metrics['combined_score'],
+                        'confidence_level': similarity_metrics['confidence_level'],
+                        'detailed_metrics': similarity_metrics
+                    })
+                else:
+                    # Use simple similarity for comparison
+                    simple_score = calculate_enhanced_similarity(norm_encoding, stored_embedding)
+                    similarity_results.append({
+                        'student_id': student_id,
+                        'similarity_score': simple_score,
+                        'confidence_level': 'medium',
+                        'detailed_metrics': {'simple_score': simple_score}
+                    })
+            
+            # Sort by similarity score
+            similarity_results.sort(key=lambda x: x['similarity_score'], reverse=True)
+            
+            # Log top candidates with detailed metrics
+            logger.info(f"📊 Advanced analysis for face {i+1}:")
+            for j, result in enumerate(similarity_results[:3]):
+                metrics = result['detailed_metrics']
+                if 'cosine_similarity' in metrics:
+                    logger.info(f"  {j+1}. {result['student_id']}: "
+                              f"combined={result['similarity_score']:.3f}, "
+                              f"cosine={metrics['cosine_similarity']:.3f}, "
+                              f"euclidean={metrics['euclidean_similarity']:.3f}, "
+                              f"confidence={result['confidence_level']}")
+                else:
+                    logger.info(f"  {j+1}. {result['student_id']}: "
+                              f"score={result['similarity_score']:.3f}, "
+                              f"confidence={result['confidence_level']}")
+            
+            # Determine best match with adaptive threshold
+            best_match = None
+            best_score = 0.0
+            confidence_level = 'very_low'
+            threshold = base_threshold
+            
+            if similarity_results:
+                top_result = similarity_results[0]
+                
+                # Adaptive threshold based on confidence level
+                if top_result['confidence_level'] == 'very_high':
+                    threshold = base_threshold * 0.7
+                elif top_result['confidence_level'] == 'high':
+                    threshold = base_threshold * 0.8
+                elif top_result['confidence_level'] == 'medium':
+                    threshold = base_threshold * 0.9
+                else:
+                    threshold = base_threshold * 1.1
+                
+                if top_result['similarity_score'] > threshold:
+                    best_match = top_result['student_id']
+                    best_score = top_result['similarity_score']
+                    confidence_level = top_result['confidence_level']
+                    
+                    logger.info(f"✅ Face {i+1} recognized as {best_match} "
+                              f"(score: {best_score:.3f}, confidence: {confidence_level}, threshold: {threshold:.3f})")
+                else:
+                    logger.info(f"❌ Face {i+1} not recognized. "
+                              f"Best score: {top_result['similarity_score']:.3f} "
+                              f"(threshold: {threshold:.3f}, confidence: {top_result['confidence_level']})")
+            
+            # Face info with advanced metrics
+            face_info = {
+                'face_index': i,
+                'student_id': best_match,
+                'confidence': float(best_score),
+                'verified': best_match is not None,
+                'confidence_level': confidence_level,
+                'threshold_used': threshold,
+                'advanced_analysis': similarity_results[:5],  # Top 5 candidates
+                'bounding_box': {
+                    'top': int(location[0]),
+                    'right': int(location[1]),
+                    'bottom': int(location[2]),
+                    'left': int(location[3])
+                },
+                'processing_method': 'advanced_similarity',
+                'motion_strength': motion_strength,
+                'processing_time': time.time() - start_time
+            }
+            
+            detected_faces.append(face_info)
+        
+        processing_time = time.time() - start_time
+        verified_count = len([f for f in detected_faces if f['verified']])
+        
+        logger.info(f"📋 Advanced processing complete: "
+                  f"{len(face_locations)} detected → {len(face_encodings)} encoded → {verified_count} recognized "
+                  f"in {processing_time:.2f}s")
+        
+        return detected_faces
+        
+    except Exception as e:
+        logger.error(f"Error in advanced face processing: {e}")
+        return []
+    
+@app.post("/api/debug/analyze-similarity-distribution")
+async def analyze_similarity_distribution_advanced(
+    class_id: str = Form(...),
+    use_advanced_similarity: bool = Form(True)
+):
+    """Advanced similarity distribution analysis for optimal threshold finding"""
+    try:
+        embedding_manager = AdvancedFaceEmbeddingManager()
+        enrolled_students = await get_enrolled_students_for_class(class_id)
+        
+        if len(enrolled_students) < 2:
+            return {
+                "success": False,
+                "message": "Need at least 2 enrolled students for analysis",
+                "class_id": class_id
+            }
+        
+        logger.info(f"🔬 Advanced similarity analysis for {len(enrolled_students)} students")
+        
+        # Get all embeddings
+        embeddings = {}
+        embedding_metadata = {}
+        
+        for student_id in enrolled_students:
+            embedding = embedding_manager.get_embedding_advanced(student_id)
+            if embedding is not None:
+                embeddings[student_id] = embedding
+                
+                # Get metadata from database
+                try:
+                    result = supabase.table('student_face_embeddings').select('*').eq('student_id', student_id).eq('is_active', True).execute()
+                    if result.data:
+                        metadata_json = result.data[0].get('metadata_json', '{}')
+                        embedding_metadata[student_id] = json.loads(metadata_json) if metadata_json != '{}' else {}
+                except:
+                    embedding_metadata[student_id] = {}
+        
+        if len(embeddings) < 2:
+            return {
+                "success": False,
+                "message": "Need at least 2 valid embeddings for analysis",
+                "class_id": class_id
+            }
+        
+        # Calculate all pairwise similarities
+        student_ids = list(embeddings.keys())
+        comparison_results = []
+        
+        for i in range(len(student_ids)):
+            for j in range(i+1, len(student_ids)):
+                student1, student2 = student_ids[i], student_ids[j]
+                
+                if use_advanced_similarity:
+                    similarity_metrics = calculate_advanced_similarity(
+                        embeddings[student1], 
+                        embeddings[student2]
+                    )
+                    comparison_results.append({
+                        'student1': student1,
+                        'student2': student2,
+                        'similarity_score': similarity_metrics['combined_score'],
+                        'confidence_level': similarity_metrics['confidence_level'],
+                        'detailed_metrics': similarity_metrics,
+                        'comparison_type': 'different_person'
+                    })
+                else:
+                    simple_score = calculate_enhanced_similarity(
+                        embeddings[student1], 
+                        embeddings[student2]
+                    )
+                    comparison_results.append({
+                        'student1': student1,
+                        'student2': student2,
+                        'similarity_score': simple_score,
+                        'comparison_type': 'different_person'
+                    })
+        
+        # Statistical analysis
+        different_person_scores = [r['similarity_score'] for r in comparison_results]
+        
+        mean_score = np.mean(different_person_scores)
+        std_score = np.std(different_person_scores)
+        median_score = np.median(different_person_scores)
+        min_score = np.min(different_person_scores)
+        max_score = np.max(different_person_scores)
+        
+        # Calculate percentiles
+        percentiles = {
+            '25th': np.percentile(different_person_scores, 25),
+            '75th': np.percentile(different_person_scores, 75),
+            '90th': np.percentile(different_person_scores, 90),
+            '95th': np.percentile(different_person_scores, 95),
+            '99th': np.percentile(different_person_scores, 99)
+        }
+        
+        # Threshold recommendations
+        conservative_threshold = min(0.9, max_score + 0.05)  # Above highest different-person score
+        balanced_threshold = min(0.85, percentiles['95th'] + 0.03)  # Above 95th percentile
+        liberal_threshold = min(0.8, percentiles['90th'] + 0.02)   # Above 90th percentile
+        
+        # Confidence-based thresholds (if using advanced similarity)
+        confidence_thresholds = {}
+        if use_advanced_similarity:
+            confidence_levels = ['very_high', 'high', 'medium', 'low', 'very_low']
+            for level in confidence_levels:
+                level_scores = [r['similarity_score'] for r in comparison_results 
+                              if r.get('confidence_level') == level]
+                if level_scores:
+                    confidence_thresholds[level] = {
+                        'count': len(level_scores),
+                        'max_score': max(level_scores),
+                        'recommended_threshold': min(0.9, max(level_scores) + 0.05)
+                    }
+        
+        return {
+            "success": True,
+            "class_id": class_id,
+            "analysis_type": "advanced" if use_advanced_similarity else "simple",
+            "students_analyzed": len(embeddings),
+            "pairwise_comparisons": len(comparison_results),
+            "embedding_metadata": embedding_metadata,
+            "statistical_analysis": {
+                "mean": float(mean_score),
+                "std": float(std_score),
+                "median": float(median_score),
+                "min": float(min_score),
+                "max": float(max_score),
+                "percentiles": {k: float(v) for k, v in percentiles.items()}
+            },
+            "threshold_recommendations": {
+                "conservative": {
+                    "value": float(conservative_threshold),
+                    "description": "Very low false positive rate, may miss some valid faces",
+                    "expected_precision": "99%+",
+                    "expected_recall": "80-90%"
+                },
+                "balanced": {
+                    "value": float(balanced_threshold),
+                    "description": "Good balance between precision and recall",
+                    "expected_precision": "95-98%",
+                    "expected_recall": "90-95%"
+                },
+                "liberal": {
+                    "value": float(liberal_threshold),
+                    "description": "High recall, slightly higher false positive risk",
+                    "expected_precision": "90-95%",
+                    "expected_recall": "95-98%"
+                }
+            },
+            "confidence_based_thresholds": confidence_thresholds,
+            "current_threshold": FACE_THRESHOLD,
+            "comparison_details": comparison_results,
+            "recommendations": [
+                f"Current threshold: {FACE_THRESHOLD}",
+                f"Recommended balanced threshold: {balanced_threshold:.3f}",
+                f"Score distribution: {min_score:.3f} - {max_score:.3f}",
+                f"Standard deviation: {std_score:.3f}",
+                "Consider using confidence-based adaptive thresholds" if use_advanced_similarity else "Consider upgrading to advanced similarity",
+                "Lower threshold if recognition rate is low" if FACE_THRESHOLD > balanced_threshold else "Current threshold seems appropriate"
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in advanced similarity analysis: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "class_id": class_id
+        }
+@app.post("/api/debug/test-advanced-recognition")
+async def test_advanced_recognition(
+    image: UploadFile = File(...),
+    class_id: str = Form(...),
+    use_advanced_similarity: bool = Form(True),
+    custom_threshold: float = Form(None)
+):
+    """Test advanced face recognition with detailed analysis"""
+    try:
+        logger.info(f"🧪 Testing advanced recognition (advanced_similarity: {use_advanced_similarity})")
+        
+        # Process image
+        image_data = await image.read()
+        image_pil = Image.open(io.BytesIO(image_data))
+        if image_pil.mode != 'RGB':
+            image_pil = image_pil.convert('RGB')
+        
+        image_array = np.array(image_pil)
+        
+        # Get enrolled students
+        enrolled_students = await get_enrolled_students_for_class(class_id)
+        
+        if not enrolled_students:
+            return {
+                "success": False,
+                "message": "No enrolled students found",
+                "class_id": class_id
+            }
+        
+        # Create config for processing
+        config = {
+            'face_threshold': custom_threshold if custom_threshold else FACE_THRESHOLD,
+            'enable_quality_check': True
+        }
+        
+        # Process with advanced matching
+        detected_faces = process_faces_with_advanced_matching(
+            image_array, 
+            enrolled_students, 
+            config, 
+            motion_strength=0.5,
+            use_advanced_similarity=use_advanced_similarity
+        )
+        
+        # Compile comprehensive results
+        test_results = {
+            "success": True,
+            "test_type": "advanced" if use_advanced_similarity else "simple",
+            "image_info": {
+                "original_size": f"{image_array.shape[1]}x{image_array.shape[0]}",
+                "processed_size": "Resized for optimization" if max(image_array.shape[:2]) > 600 else "Original size"
+            },
+            "enrolled_students": enrolled_students,
+            "threshold_used": config['face_threshold'],
+            "faces_detected": len(detected_faces),
+            "faces_recognized": len([f for f in detected_faces if f['verified']]),
+            "detailed_results": detected_faces,
+            "performance_metrics": {
+                "total_processing_time": sum([f.get('processing_time', 0) for f in detected_faces]),
+                "average_processing_time": np.mean([f.get('processing_time', 0) for f in detected_faces]) if detected_faces else 0
+            }
+        }
+        
+        # Add recommendations based on results
+        recommendations = []
+        
+        if not detected_faces:
+            recommendations.extend([
+                "No faces detected in image",
+                "Ensure face is clearly visible and well-lit",
+                "Try using a higher resolution image"
+            ])
+        else:
+            recognition_rate = len([f for f in detected_faces if f['verified']]) / len(detected_faces)
+            
+            if recognition_rate == 0:
+                recommendations.extend([
+                    "No faces recognized",
+                    f"Best similarity score: {max([max(f.get('advanced_analysis', [{'similarity_score': 0}]), key=lambda x: x['similarity_score'])['similarity_score'] for f in detected_faces]):.3f}",
+                    f"Current threshold: {config['face_threshold']:.3f}",
+                    f"Consider lowering threshold to {config['face_threshold'] - 0.1:.3f}",
+                    "Check if students are properly enrolled"
+                ])
+            elif recognition_rate < 1.0:
+                recommendations.extend([
+                    f"Partial recognition: {len([f for f in detected_faces if f['verified']])}/{len(detected_faces)} faces",
+                    "Some faces not recognized - consider threshold adjustment",
+                    "Check enrollment quality for unrecognized individuals"
+                ])
+            else:
+                recommendations.extend([
+                    "Excellent recognition rate!",
+                    "All detected faces were successfully recognized",
+                    "Current threshold appears optimal"
+                ])
+            
+            # Add confidence-specific recommendations
+            if use_advanced_similarity:
+                confidence_levels = [f.get('confidence_level', 'unknown') for f in detected_faces if f['verified']]
+                if confidence_levels:
+                    most_common_confidence = max(set(confidence_levels), key=confidence_levels.count)
+                    recommendations.append(f"Recognition confidence: mostly {most_common_confidence}")
+        
+        test_results["recommendations"] = recommendations
+        test_results["timestamp"] = datetime.now().isoformat()
+        
+        return test_results
+        
+    except Exception as e:
+        logger.error(f"Error in advanced recognition test: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+advanced_embedding_manager = AdvancedFaceEmbeddingManager()
+
+# Replace existing functions with advanced versions
+def get_face_embedding_cached_advanced(student_id: str) -> Optional[np.ndarray]:
+    """Advanced wrapper for face embedding retrieval"""
+    return advanced_embedding_manager.get_embedding_advanced(student_id)
+
+# Update motion processing to use advanced features
+async def process_motion_triggered_background_advanced(item: Dict):
+    """Advanced motion processing with enhanced similarity"""
+    try:
+        start_time = time.time()
+        session_id = item['session_id']
+        session_data = item['session_data']
+        config = item['config']
+        phase = item['phase']
+        motion_strength = item['motion_strength']
+        
+        logger.info(f"🚶 Advanced motion processing: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
+        
+        # Process image
+        try:
+            image_pil = Image.open(io.BytesIO(item['image_data']))
+            if image_pil.mode != 'RGB':
+                image_pil = image_pil.convert('RGB')
+            
+            image_array = np.array(image_pil)
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            return
+        
+        # Get enrolled students
+        enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
+        
+        if not enrolled_students:
+            logger.warning(f"No enrolled students for advanced motion capture: {session_id}")
+            return
+        
+        # Use advanced face processing
+        detected_faces = process_faces_with_advanced_matching(
+            image_array, 
+            enrolled_students, 
+            config, 
+            motion_strength,
+            use_advanced_similarity=True
+        )
+        
+        # Record attendance with enhanced data
+        new_records = 0
+        for face_info in detected_faces:
+            if not face_info['verified']:
+                continue
+            
+            student_id = face_info['student_id']
+            confidence = face_info['confidence']
+            confidence_level = face_info.get('confidence_level', 'medium')
+            
+            # Get student email
+            try:
+                student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
+                
+                if not student_result.data:
+                    logger.warning(f"No user found for student_id: {student_id}")
+                    continue
+                
+                student_email = student_result.data['email']
+                
+                # Check if already recorded
+                existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+                
+                if existing_record.data:
+                    logger.info(f"Student {student_id} already recorded, skipping")
+                    continue
+                
+                # Determine status
+                capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
+                session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+                on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
+                
+                status = 'present' if capture_dt <= on_time_limit else 'late'
+                
+                # Enhanced attendance record
+                record_data = {
+                    'session_id': session_id,
+                    'student_email': student_email,
+                    'student_id': student_id,
+                    'check_in_time': item['capture_time'],
+                    'status': status,
+                    'face_match_score': confidence,
+                    'confidence_level': confidence_level,
+                    'detection_method': 'advanced_motion_triggered',
+                    'processing_phase': phase,
+                    'face_quality': face_info.get('quality_score', 1.0),
+                    'motion_strength': motion_strength,
+                    'trigger_type': 'motion',
+                    'device_id': item.get('device_id'),
+                    'advanced_metrics': json.dumps(face_info.get('advanced_analysis', [])),
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                supabase.table('attendance_records').insert(record_data).execute()
+                new_records += 1
+                logger.info(f"✅ Advanced attendance recorded for {student_id}: {status} (confidence: {confidence_level})")
+                
+            except Exception as e:
+                logger.error(f"❌ Error saving advanced record for {student_id}: {e}")
+                continue
+        
+        processing_time = time.time() - start_time
+        
+        # Update capture log with advanced metrics
+        advanced_metrics = {
+            'processing_method': 'advanced_similarity',
+            'confidence_distribution': {},
+            'similarity_statistics': {}
+        }
+        
+        # Calculate confidence distribution
+        for face in detected_faces:
+            confidence_level = face.get('confidence_level', 'unknown')
+            advanced_metrics['confidence_distribution'][confidence_level] = \
+                advanced_metrics['confidence_distribution'].get(confidence_level, 0) + 1
+        
+        supabase.table('motion_captures').update({
+            'faces_detected': len(detected_faces),
+            'faces_recognized': len([f for f in detected_faces if f['verified']]),
+            'new_records': new_records,
+            'processing_time_ms': int(processing_time * 1000),
+            'processing_status': 'completed',
+            'advanced_metrics': json.dumps(advanced_metrics),
+            'system_version': '6.0.0-advanced'
+        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        
+        logger.info(f"🚀 ADVANCED motion capture complete: {new_records} new records in {processing_time:.2f}s")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in advanced motion processing: {e}")
+        
+        try:
+            supabase.table('motion_captures').update({
+                'processing_status': 'failed',
+                'error_message': str(e)
+            }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
+        except:
+            pass
+@app.get("/api/system/advanced-status")
+async def get_advanced_system_status():
+    """Get comprehensive advanced system status"""
+    try:
+        # Test advanced features
+        test_embedding = np.random.random(128)
+        normalized = normalize_embedding(test_embedding)
+        
+        # Check database for advanced enrollments
+        advanced_enrollments = supabase.table('student_face_embeddings').select('*').eq('system_version', '6.0.0-advanced').execute()
+        
+        # Get system capabilities
+        return {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "system_version": "6.0.0-advanced",
+            "advanced_features": {
+                "normalized_embeddings": normalized is not None,
+                "multi_similarity_metrics": True,
+                "ensemble_embeddings": True,
+                "quality_filtering": True,
+                "confidence_levels": True,
+                "adaptive_thresholds": True
+            },
+            "enrollment_statistics": {
+                "total_advanced_enrollments": len(advanced_enrollments.data or []),
+                "supported_methods": [
+                    "weighted_centroid",
+                    "best_quality", 
+                    "quality_filtered",
+                    "all_separate"
+                ]
+            },
+            "similarity_metrics": [
+                "cosine_similarity",
+                "euclidean_distance", 
+                "manhattan_distance",
+                "combined_score"
+            ],
+            "confidence_levels": [
+                "very_high",
+                "high",
+                "medium", 
+                "low",
+                "very_low"
+            ],
+            "performance_optimizations": [
+                "image_resizing",
+                "embedding_caching",
+                "hog_model_for_speed",
+                "normalized_comparisons"
+            ],
+            "current_threshold": FACE_THRESHOLD,
+            "recommendations": [
+                "Use advanced enrollment for better accuracy",
+                "Enable confidence-based adaptive thresholds",
+                "Monitor similarity distributions for optimal thresholds",
+                "Consider ensemble embeddings for critical applications"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting advanced system status: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+@app.post("/api/face/enroll-advanced")
+async def enroll_face_advanced(
+    images: List[UploadFile] = File(...),
+    student_id: str = Form(...),
+    student_email: str = Form(...),
+    enrollment_method: str = Form('weighted_centroid'),  # weighted_centroid, best_quality, quality_filtered, all_separate
+    min_quality_threshold: float = Form(0.3)
+):
+    
+
+    """Advanced face enrollment with multiple embedding strategies"""
+    try:
+        if not images or len(images) == 0:
+            raise HTTPException(status_code=400, detail="At least one image required")
+        
+        if len(images) > 10:
+            raise HTTPException(status_code=400, detail="Maximum 10 images allowed")
+        
+        if enrollment_method not in ['weighted_centroid', 'best_quality', 'quality_filtered', 'all_separate']:
+            raise HTTPException(status_code=400, detail="Invalid enrollment method")
+        
+        logger.info(f"🎯 Advanced enrollment for {student_id} with {len(images)} images using {enrollment_method}")
+        
+        embedding_manager = AdvancedFaceEmbeddingManager()
+        all_encodings = []
+        quality_scores = []
+        image_analysis = []
+        
+        for idx, image_file in enumerate(images):
+            try:
+                logger.info(f"📸 Processing image {idx+1}/{len(images)}")
+                
+                image_data = await image_file.read()
+                image = Image.open(io.BytesIO(image_data))
+                
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                
+                image_array = np.array(image)
+                
+                # Use CNN model for enrollment (high accuracy)
+                face_locations = face_recognition.face_locations(image_array, model="cnn")
+                
+                if len(face_locations) == 0:
+                    image_analysis.append({
+                        'index': idx+1,
+                        'status': 'no_face',
+                        'reason': 'No face detected'
+                    })
+                    continue
+                
+                if len(face_locations) > 1:
+                    logger.warning(f"Multiple faces in image {idx+1}, using largest")
+                    face_locations = sorted(face_locations, 
+                                          key=lambda loc: (loc[2]-loc[0])*(loc[1]-loc[3]), 
+                                          reverse=True)
+                
+                # Get high-quality encoding
+                face_encodings = face_recognition.face_encodings(
+                    image_array, 
+                    face_locations[:1], 
+                    num_jitters=3  # High quality for enrollment
+                )
+                
+                if face_encodings:
+                    raw_encoding = face_encodings[0]
+                    normalized_encoding = normalize_embedding(raw_encoding)
+                    
+                    if normalized_encoding is not None:
+                        # Calculate comprehensive quality
+                        quality_info = calculate_face_quality(image_array, face_locations[0])
+                        quality_score = quality_info['overall_score']
+                        
+                        # Quality filtering
+                        if quality_score >= min_quality_threshold:
+                            all_encodings.append(normalized_encoding)
+                            quality_scores.append(quality_score)
+                            
+                            image_analysis.append({
+                                'index': idx+1,
+                                'status': 'success',
+                                'quality_score': quality_score,
+                                'quality_details': quality_info,
+                                'face_area': (face_locations[0][2] - face_locations[0][0]) * 
+                                           (face_locations[0][1] - face_locations[0][3]),
+                                'encoding_norm': float(np.linalg.norm(normalized_encoding))
+                            })
+                            
+                            logger.info(f"✅ Image {idx+1} enrolled (quality: {quality_score:.3f})")
+                        else:
+                            image_analysis.append({
+                                'index': idx+1,
+                                'status': 'low_quality',
+                                'quality_score': quality_score,
+                                'threshold': min_quality_threshold,
+                                'reason': f'Quality {quality_score:.3f} below threshold {min_quality_threshold}'
+                            })
+                            logger.warning(f"❌ Image {idx+1} rejected: low quality ({quality_score:.3f})")
+                    else:
+                        image_analysis.append({
+                            'index': idx+1,
+                            'status': 'normalization_failed',
+                            'reason': 'Failed to normalize embedding'
+                        })
+                else:
+                    image_analysis.append({
+                        'index': idx+1,
+                        'status': 'no_encoding',
+                        'reason': 'No face encoding generated'
+                    })
+                
+            except Exception as e:
+                logger.error(f"Error processing image {idx+1}: {e}")
+                image_analysis.append({
+                    'index': idx+1,
+                    'status': 'error',
+                    'reason': str(e)
+                })
+                continue
+        
+        if not all_encodings:
+            raise HTTPException(status_code=400, detail="No valid high-quality face encodings generated")
+        
+        if len(all_encodings) < 2 and enrollment_method in ['weighted_centroid', 'quality_filtered']:
+            logger.warning(f"Only {len(all_encodings)} valid encoding(s), consider taking more photos")
+        
+        # Save embeddings using advanced method
+        success = embedding_manager.save_multiple_embeddings(
+            student_id, 
+            all_encodings, 
+            quality_scores, 
+            method=enrollment_method
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save advanced face embeddings")
+        
+        # Clear cache
+        with embedding_manager.cache_lock:
+            if student_id in embedding_manager.embedding_cache:
+                del embedding_manager.embedding_cache[student_id]
+        
+        success_count = len(all_encodings)
+        avg_quality = np.mean(quality_scores)
+        quality_std = np.std(quality_scores)
+        
+        logger.info(f"✅ Advanced enrollment complete for {student_id}: "
+                  f"{success_count}/{len(images)} images successful using {enrollment_method}")
+        
+        return {
+            "success": True,
+            "message": f"Advanced enrollment completed using {success_count} high-quality images",
+            "student_id": student_id,
+            "enrollment_method": enrollment_method,
+            "images_processed": len(images),
+            "successful_encodings": success_count,
+            "rejected_images": len(images) - success_count,
+            "quality_statistics": {
+                "average_quality": float(avg_quality),
+                "quality_std": float(quality_std),
+                "min_quality": float(min(quality_scores)) if quality_scores else 0,
+                "max_quality": float(max(quality_scores)) if quality_scores else 0,
+                "quality_threshold": min_quality_threshold
+            },
+            "image_analysis": image_analysis,
+            "recommendations": [
+                f"Success rate: {success_count/len(images)*100:.1f}%",
+                f"Average quality: {avg_quality:.3f} ± {quality_std:.3f}",
+                f"Method used: {enrollment_method}",
+                "Excellent quality" if avg_quality > 0.7 else "Good quality" if avg_quality > 0.5 else "Consider retaking photos",
+                f"Recognition should be {'very reliable' if avg_quality > 0.7 else 'reliable' if avg_quality > 0.5 else 'moderate'}"
+            ],
+            "system_version": "6.0.0-advanced",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Advanced enrollment error: {e}")
+        raise HTTPException(status_code=500, detail=f"Advanced enrollment failed: {str(e)}")
 
 def get_face_embedding_cached(student_id: str) -> Optional[np.ndarray]:
     """Get face embedding with caching for motion-triggered processing"""
