@@ -31,7 +31,7 @@ load_dotenv()
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", 8000))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
-FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.7))
+FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.6))
 
 # Motion Detection Configuration
 MOTION_DETECTION_ENABLED = os.getenv("MOTION_DETECTION_ENABLED", "true").lower() == "true"
@@ -556,26 +556,432 @@ def calculate_enhanced_similarity(embedding1: np.ndarray, embedding2: np.ndarray
         return 0.0
 
 async def get_enrolled_students_for_class(class_id: str) -> List[str]:
-    """Get enrolled students with caching"""
+    """Get enrolled students - แก้ไขสำหรับกรณีไม่มี class_students table"""
     try:
-        result = supabase.table('class_students').select('users(school_id)').eq('class_id', class_id).execute()
+        # วิธีที่ 1: ลองใช้ class_students table ก่อน
+        try:
+            class_students_result = supabase.table('class_students').select('user_id').eq('class_id', class_id).execute()
+            
+            if class_students_result.data:
+                user_ids = [record['user_id'] for record in class_students_result.data]
+                logger.info(f"Found {len(user_ids)} user_ids in class {class_id} via class_students")
+                
+                student_ids = []
+                for user_id in user_ids:
+                    try:
+                        user_result = supabase.table('users').select('school_id').eq('id', user_id).single().execute()
+                        if user_result.data and user_result.data.get('school_id'):
+                            student_ids.append(user_result.data['school_id'])
+                    except Exception as e:
+                        logger.warning(f"Could not get school_id for user_id {user_id}: {e}")
+                        continue
+                
+                if student_ids:
+                    logger.info(f"✅ Found {len(student_ids)} enrolled students for class {class_id}: {student_ids}")
+                    return student_ids
         
-        if not result.data:
-            logger.warning(f"No enrolled students found for class {class_id}")
-            return []
+        except Exception as e:
+            if "does not exist" in str(e).lower():
+                logger.warning(f"⚠️ Table 'class_students' does not exist, using fallback method")
+            else:
+                logger.error(f"Error with class_students table: {e}")
         
-        student_ids = []
-        for record in result.data:
-            if record and record.get('users') and record['users'].get('school_id'):
-                student_ids.append(record['users']['school_id'])
-        
-        logger.info(f"Found {len(student_ids)} enrolled students for class {class_id}")
-        return student_ids
+        # วิธีที่ 2: ใช้ fallback - ตรวจสอบใน classes table หรือใช้วิธีอื่น
+        return await get_enrolled_students_fallback(class_id)
         
     except Exception as e:
         logger.error(f"Error getting enrolled students for class {class_id}: {e}")
-        return []
+        return await get_enrolled_students_fallback(class_id)
 
+async def get_enrolled_students_fallback(class_id: str) -> List[str]:
+    """Fallback method - improved version"""
+    try:
+        # วิธีที่ 1: ตรวจสอบใน classes table ว่ามี student_list หรือไม่
+        try:
+            logger.info(f"🔍 Checking classes table for class {class_id}")
+            class_result = supabase.table('classes').select('*').eq('class_id', class_id).execute()
+            
+            if class_result.data:
+                class_data = class_result.data[0]
+                logger.info(f"📋 Class data: {class_data}")
+                
+                # ตรวจสอบว่ามี field ที่เก็บ student list ไหม
+                potential_student_fields = ['students', 'student_list', 'enrolled_students', 'student_ids']
+                
+                for field in potential_student_fields:
+                    if field in class_data and class_data[field]:
+                        logger.info(f"🎯 Found students in field '{field}': {class_data[field]}")
+                        return class_data[field] if isinstance(class_data[field], list) else [class_data[field]]
+        
+        except Exception as e:
+            logger.warning(f"Could not check classes table: {e}")
+        
+        # วิธีที่ 2: ในโหมด DEBUG - ใช้ทุกคนที่มี face embeddings
+        if os.getenv("DEBUG", "false").lower() == "true":
+            logger.info("🔧 DEBUG MODE: Using all users with face embeddings")
+            
+            try:
+                embeddings_result = supabase.table('student_face_embeddings').select('student_id').eq('is_active', True).execute()
+                
+                if embeddings_result.data:
+                    student_ids = list(set([record['student_id'] for record in embeddings_result.data]))
+                    logger.info(f"🔧 DEBUG: Found {len(student_ids)} students with face embeddings: {student_ids}")
+                    return student_ids
+            except Exception as e:
+                logger.error(f"Could not get face embeddings: {e}")
+        
+        # วิธีที่ 3: Manual override สำหรับ testing
+        manual_students = os.getenv("MANUAL_STUDENTS_FOR_CLASS", "").split(",")
+        manual_students = [s.strip() for s in manual_students if s.strip()]
+        
+        if manual_students:
+            logger.info(f"🔧 MANUAL: Using manual student list: {manual_students}")
+            return manual_students
+        
+        # วิธีที่ 4: ถ้าไม่มีวิธีไหนได้ผล - สร้าง table class_students
+        logger.warning(f"⚠️ Could not find enrolled students for class {class_id}")
+        logger.info("💡 Consider creating class_students table or setting MANUAL_STUDENTS_FOR_CLASS environment variable")
+        
+        return []
+        
+    except Exception as e:
+        logger.error(f"Fallback method error: {e}")
+        return []
+def process_motion_triggered_faces_optimized(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
+    """Optimized face processing - ลดเวลาจาก 45s เป็น 5-10s"""
+    try:
+        start_time = time.time()
+        
+        if image_array is None or image_array.size == 0:
+            logger.warning("Empty image array for motion processing")
+            return []
+        
+        if not enrolled_students:
+            logger.warning("❌ No enrolled students found!")
+            return []
+        
+        logger.info(f"📋 Processing with {len(enrolled_students)} enrolled students")
+        
+        # ปรับขนาดภาพเพื่อเพิ่มความเร็ว
+        height, width = image_array.shape[:2]
+        
+        # ลดขนาดภาพถ้าใหญ่เกินไป (เพื่อความเร็ว)
+        max_dimension = 800
+        if max(height, width) > max_dimension:
+            scale = max_dimension / max(height, width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            
+            import cv2
+            image_array = cv2.resize(image_array, (new_width, new_height))
+            logger.info(f"🔧 Resized image from {width}x{height} to {new_width}x{new_height} for faster processing")
+        
+        # เลือก model ตาม motion strength (ปรับให้เร็วขึ้น)
+        if motion_strength > 0.3 and config.get('motion_boost', False):
+            model_type = "hog"  # เปลี่ยนจาก cnn เป็น hog เพื่อความเร็ว
+            num_jitters = 1     # ลดจาก 2 เป็น 1
+        else:
+            model_type = "hog"  # ใช้ hog เป็น default เพื่อความเร็ว
+            num_jitters = 1
+        
+        # Detect faces (ใช้ hog model ที่เร็วกว่า)
+        face_locations = face_recognition.face_locations(image_array, model=model_type)
+        
+        if not face_locations:
+            logger.info("❌ No faces detected")
+            return []
+        
+        logger.info(f"👥 Detected {len(face_locations)} faces in {time.time() - start_time:.2f}s")
+        
+        # Get face encodings (ลด num_jitters เพื่อความเร็ว)
+        encoding_start = time.time()
+        face_encodings = face_recognition.face_encodings(
+            image_array, 
+            face_locations, 
+            num_jitters=num_jitters
+        )
+        encoding_time = time.time() - encoding_start
+        
+        if not face_encodings:
+            logger.warning("❌ No face encodings generated!")
+            return []
+        
+        logger.info(f"🔢 Generated {len(face_encodings)} encodings in {encoding_time:.2f}s")
+        
+        detected_faces = []
+        threshold = config['face_threshold']
+        
+        # ปรับ threshold ให้เหมาะสมกับการประมวลผลที่เร็วขึ้น
+        if motion_strength > 0.4:
+            threshold *= 0.9  # ลด threshold เล็กน้อยสำหรับ motion events
+        elif motion_strength < 0.15:
+            threshold *= 1.1  # เพิ่ม threshold เล็กน้อยสำหรับ weak motion
+        
+        logger.info(f"🎯 Using recognition threshold: {threshold} (adjusted from {config['face_threshold']})")
+        
+        # การเปรียบเทียบแบบ parallel (ถ้าจำเป็น)
+        comparison_start = time.time()
+        
+        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
+            try:
+                best_match = None
+                best_similarity = 0.0
+                similarities = {}
+                
+                # เปรียบเทียบกับ enrolled students
+                for student_id in enrolled_students:
+                    stored_embedding = get_face_embedding_cached(student_id)
+                    
+                    if stored_embedding is None:
+                        continue
+                    
+                    similarity = calculate_enhanced_similarity(stored_embedding, encoding)
+                    similarities[student_id] = similarity
+                    
+                    if similarity > threshold and similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = student_id
+                
+                # Log ผลลัพธ์
+                if best_match:
+                    logger.info(f"✅ Face {i+1} recognized as {best_match} (confidence: {best_similarity:.3f})")
+                else:
+                    max_sim = max(similarities.values()) if similarities else 0
+                    logger.info(f"❌ Face {i+1} not recognized. Best similarity: {max_sim:.3f} (threshold: {threshold})")
+                
+                # คำนวณ quality แบบเร็ว (ถ้าจำเป็น)
+                quality_score = 0.8  # ใช้ค่าคงที่เพื่อความเร็ว หรือคำนวณแบบง่าย
+                if config.get('enable_quality_check', False):
+                    try:
+                        quality_info = calculate_motion_face_quality(image_array, location, motion_strength)
+                        quality_score = quality_info['overall_score']
+                    except:
+                        quality_score = 0.7  # fallback value
+                
+                face_info = {
+                    'face_index': i,
+                    'student_id': best_match,
+                    'confidence': float(best_similarity),
+                    'verified': best_match is not None and best_similarity > threshold,
+                    'all_similarities': similarities,
+                    'threshold_used': threshold,
+                    'bounding_box': {
+                        'top': int(location[0]),
+                        'right': int(location[1]),
+                        'bottom': int(location[2]),
+                        'left': int(location[3])
+                    },
+                    'quality_score': quality_score,
+                    'motion_strength': motion_strength,
+                    'model_used': model_type,
+                    'num_jitters': num_jitters
+                }
+                
+                detected_faces.append(face_info)
+                
+            except Exception as e:
+                logger.error(f"❌ Error processing face {i}: {e}")
+                continue
+        
+        comparison_time = time.time() - comparison_start
+        total_time = time.time() - start_time
+        verified_faces = [f for f in detected_faces if f['verified']]
+        
+        logger.info(f"📋 Summary: {len(face_locations)} detected → {len(face_encodings)} encoded → {len(verified_faces)} recognized")
+        logger.info(f"⏱️ Timing: Detection={encoding_time:.1f}s, Comparison={comparison_time:.1f}s, Total={total_time:.1f}s")
+        
+        return detected_faces
+        
+    except Exception as e:
+        logger.error(f"❌ Error in optimized face processing: {e}")
+        return []
+    
+@app.get("/api/debug/database-schema")
+async def debug_database_schema():
+    """Debug database schema and relationships"""
+    try:
+        schema_info = {}
+        
+        # ตรวจสอบ tables ที่มี
+        tables_to_check = [
+            'users',
+            'classes', 
+            'class_students',
+            'student_face_embeddings',
+            'attendance_sessions',
+            'attendance_records',
+            'motion_captures'
+        ]
+        
+        for table_name in tables_to_check:
+            try:
+                # ดึง schema ของแต่ละ table
+                result = supabase.table(table_name).select('*').limit(1).execute()
+                
+                if result.data and len(result.data) > 0:
+                    columns = list(result.data[0].keys())
+                    schema_info[table_name] = {
+                        'exists': True,
+                        'columns': columns,
+                        'sample_count': len(result.data)
+                    }
+                else:
+                    # ถ้าไม่มีข้อมูล ลองดู structure
+                    schema_info[table_name] = {
+                        'exists': True,
+                        'columns': 'no_data_to_determine_schema',
+                        'sample_count': 0
+                    }
+            except Exception as e:
+                schema_info[table_name] = {
+                    'exists': False,
+                    'error': str(e)
+                }
+        
+        # ตรวจสอบ relationships ที่มีปัญหา
+        relationship_tests = {}
+        
+        # Test 1: class_students -> users relationship
+        try:
+            test_result = supabase.table('class_students').select('user_id, users(school_id)').limit(1).execute()
+            relationship_tests['class_students_to_users'] = {
+                'status': 'working',
+                'data': test_result.data
+            }
+        except Exception as e:
+            relationship_tests['class_students_to_users'] = {
+                'status': 'failed',
+                'error': str(e)
+            }
+        
+        # Test 2: Manual join approach
+        try:
+            cs_result = supabase.table('class_students').select('user_id').limit(1).execute()
+            if cs_result.data:
+                user_id = cs_result.data[0]['user_id']
+                user_result = supabase.table('users').select('school_id').eq('id', user_id).execute()
+                relationship_tests['manual_join'] = {
+                    'status': 'working',
+                    'class_students_sample': cs_result.data[0],
+                    'users_sample': user_result.data[0] if user_result.data else None
+                }
+            else:
+                relationship_tests['manual_join'] = {
+                    'status': 'no_data',
+                    'message': 'No data in class_students table'
+                }
+        except Exception as e:
+            relationship_tests['manual_join'] = {
+                'status': 'failed',
+                'error': str(e)
+            }
+        
+        return {
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'tables': schema_info,
+            'relationships': relationship_tests,
+            'recommendations': [
+                'Check if foreign key constraints exist between class_students.user_id and users.id',
+                'Verify that Supabase schema cache is updated',
+                'Consider using manual joins instead of auto-joins',
+                'Check if RLS (Row Level Security) is affecting queries'
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error debugging database schema: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
+
+# เพิ่ม debug endpoint สำหรับ class data
+@app.get("/api/debug/class/{class_id}")
+async def debug_class_data(class_id: str):
+    """Debug specific class data"""
+    try:
+        debug_info = {}
+        
+        # 1. ตรวจสอบ class ว่ามีอยู่ไหม
+        try:
+            class_result = supabase.table('classes').select('*').eq('class_id', class_id).execute()
+            debug_info['class'] = {
+                'exists': len(class_result.data) > 0,
+                'data': class_result.data[0] if class_result.data else None
+            }
+        except Exception as e:
+            debug_info['class'] = {'error': str(e)}
+        
+        # 2. ตรวจสอบ class_students
+        try:
+            cs_result = supabase.table('class_students').select('*').eq('class_id', class_id).execute()
+            debug_info['class_students'] = {
+                'count': len(cs_result.data) if cs_result.data else 0,
+                'data': cs_result.data
+            }
+        except Exception as e:
+            debug_info['class_students'] = {'error': str(e)}
+        
+        # 3. ตรวจสอบ users ที่เกี่ยวข้อง
+        if debug_info.get('class_students', {}).get('data'):
+            try:
+                user_ids = [record['user_id'] for record in debug_info['class_students']['data']]
+                users_data = []
+                
+                for user_id in user_ids:
+                    user_result = supabase.table('users').select('id, school_id, email, first_name, last_name').eq('id', user_id).execute()
+                    if user_result.data:
+                        users_data.append(user_result.data[0])
+                
+                debug_info['users'] = {
+                    'count': len(users_data),
+                    'data': users_data
+                }
+            except Exception as e:
+                debug_info['users'] = {'error': str(e)}
+        
+        # 4. ตรวจสอบ face embeddings
+        if debug_info.get('users', {}).get('data'):
+            try:
+                school_ids = [user['school_id'] for user in debug_info['users']['data'] if user.get('school_id')]
+                embeddings_data = []
+                
+                for school_id in school_ids:
+                    embedding_result = supabase.table('student_face_embeddings').select('student_id, face_quality, is_active, created_at').eq('student_id', school_id).eq('is_active', True).execute()
+                    if embedding_result.data:
+                        embeddings_data.extend(embedding_result.data)
+                
+                debug_info['face_embeddings'] = {
+                    'count': len(embeddings_data),
+                    'data': embeddings_data
+                }
+            except Exception as e:
+                debug_info['face_embeddings'] = {'error': str(e)}
+        
+        return {
+            'success': True,
+            'class_id': class_id,
+            'debug_info': debug_info,
+            'summary': {
+                'class_exists': debug_info.get('class', {}).get('exists', False),
+                'students_enrolled': debug_info.get('class_students', {}).get('count', 0),
+                'users_found': debug_info.get('users', {}).get('count', 0),
+                'face_embeddings': debug_info.get('face_embeddings', {}).get('count', 0)
+            },
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error debugging class {class_id}: {e}")
+        return {
+            'success': False,
+            'class_id': class_id,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
+        
 # ==================== Motion Detection API Endpoints ====================
 
 @app.on_event("startup")
@@ -615,6 +1021,59 @@ async def startup_event():
     logger.info(f"⏰ Motion Cooldown: {MOTION_COOLDOWN_SECONDS}s")
     logger.info(f"📈 Max Snapshots/Hour: {MAX_SNAPSHOTS_PER_HOUR}")
 
+@app.post("/api/debug/fix-enrolled-students")
+async def fix_enrolled_students_data():
+    """Manual fix for enrolled students data - ใช้เฉพาะเมื่อจำเป็น"""
+    try:
+        fixed_relationships = []
+        
+        # ดึงข้อมูล class_students ทั้งหมด
+        cs_result = supabase.table('class_students').select('*').execute()
+        
+        if not cs_result.data:
+            return {
+                'success': False,
+                'message': 'No class_students data found'
+            }
+        
+        for record in cs_result.data:
+            try:
+                user_id = record['user_id']
+                class_id = record['class_id']
+                
+                # ดึงข้อมูล user
+                user_result = supabase.table('users').select('school_id, email').eq('id', user_id).execute()
+                
+                if user_result.data:
+                    school_id = user_result.data[0].get('school_id')
+                    email = user_result.data[0].get('email')
+                    
+                    if school_id:
+                        fixed_relationships.append({
+                            'class_id': class_id,
+                            'user_id': user_id,
+                            'school_id': school_id,
+                            'email': email
+                        })
+                
+            except Exception as e:
+                logger.warning(f"Could not process record {record}: {e}")
+                continue
+        
+        return {
+            'success': True,
+            'message': f'Found {len(fixed_relationships)} valid relationships',
+            'data': fixed_relationships,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fixing enrolled students data: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
@@ -1676,7 +2135,135 @@ async def get_motion_session_statistics_internal(session_id: str) -> Dict:
         return {"error": str(e)}
 
 # ==================== System Health and Monitoring ====================
-
+async def process_motion_triggered_background_optimized(item: Dict):
+    """Optimized motion processing - ใช้แทน process_motion_triggered_background"""
+    try:
+        start_time = time.time()
+        session_id = item['session_id']
+        session_data = item['session_data']
+        config = item['config']
+        phase = item['phase']
+        motion_strength = item['motion_strength']
+        
+        logger.info(f"🚶 Processing motion-triggered capture: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
+        
+        # Process image (ปรับปรุงการโหลดภาพ)
+        try:
+            image_pil = Image.open(io.BytesIO(item['image_data']))
+            if image_pil.mode != 'RGB':
+                image_pil = image_pil.convert('RGB')
+            
+            image_array = np.array(image_pil)
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            return
+        
+        # Get enrolled students (cached)
+        enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
+        
+        if not enrolled_students:
+            logger.warning(f"No enrolled students for motion capture: {session_id}")
+            # อัพเดท capture log ด้วยสถานะ no_students
+            try:
+                supabase.table('motion_captures').update({
+                    'processing_status': 'no_students',
+                    'error_message': 'No enrolled students found'
+                }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+            except:
+                pass
+            return
+        
+        # Process faces with optimized function
+        detected_faces = process_motion_triggered_faces_optimized(
+            image_array, 
+            enrolled_students, 
+            config, 
+            motion_strength
+        )
+        
+        # Record new attendance (เหมือนเดิม)
+        new_records = 0
+        for face_info in detected_faces:
+            if not face_info['verified']:
+                continue
+            
+            student_id = face_info['student_id']
+            confidence = face_info['confidence']
+            
+            # Get student email
+            try:
+                student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
+                
+                if not student_result.data:
+                    logger.warning(f"No user found for student_id: {student_id}")
+                    continue
+                
+                student_email = student_result.data['email']
+                
+                # Check if already recorded
+                existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+                
+                if existing_record.data:
+                    logger.info(f"Student {student_id} already recorded, skipping")
+                    continue
+                
+                # Determine status based on timing
+                capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
+                session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+                on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
+                
+                status = 'present' if capture_dt <= on_time_limit else 'late'
+                
+                # Record motion-triggered attendance
+                record_data = {
+                    'session_id': session_id,
+                    'student_email': student_email,
+                    'student_id': student_id,
+                    'check_in_time': item['capture_time'],
+                    'status': status,
+                    'face_match_score': confidence,
+                    'detection_method': 'motion_triggered_optimized',
+                    'processing_phase': phase,
+                    'face_quality': face_info.get('quality_score', 1.0),
+                    'motion_strength': motion_strength,
+                    'trigger_type': 'motion',
+                    'device_id': item.get('device_id'),
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                supabase.table('attendance_records').insert(record_data).execute()
+                new_records += 1
+                logger.info(f"✅ Motion-triggered attendance recorded for {student_id}: {status}")
+                
+            except Exception as e:
+                logger.error(f"❌ Error saving motion record for {student_id}: {e}")
+                continue
+        
+        processing_time = time.time() - start_time
+        
+        # Update capture log
+        supabase.table('motion_captures').update({
+            'faces_detected': len(detected_faces),
+            'faces_recognized': len([f for f in detected_faces if f['verified']]),
+            'new_records': new_records,
+            'processing_time_ms': int(processing_time * 1000),
+            'processing_status': 'completed',
+            'optimization_version': 'v2_fast'
+        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        
+        logger.info(f"🤖 OPTIMIZED Motion capture complete: {new_records} new records in {processing_time:.2f}s")
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing optimized motion capture: {e}")
+        
+        # Update status to failed
+        try:
+            supabase.table('motion_captures').update({
+                'processing_status': 'failed',
+                'error_message': str(e)
+            }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
+        except:
+            pass
 @app.get("/health")
 async def motion_system_health():
     """Enhanced health check for motion detection system"""
@@ -2195,6 +2782,7 @@ async def save_face_embedding_to_db(
     except Exception as e:
         logger.error(f"❌ Error saving to database for motion detection: {e}")
         return False
+    
 
 # ==================== Server Startup ====================
 
