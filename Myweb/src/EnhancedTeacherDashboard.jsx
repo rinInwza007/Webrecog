@@ -9,10 +9,15 @@ const EnhancedTeacherDashboard = () => {
   const [classes, setClasses] = useState([])
   const [sessions, setSessions] = useState([])
   const [currentSession, setCurrentSession] = useState(null)
+  const [sessionStudents, setSessionStudents] = useState([]) // เพิ่มข้อมูลนักเรียนใน session
   const [attendanceRecords, setAttendanceRecords] = useState([])
   const [motionStats, setMotionStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  
+  // เพิ่ม state สำหรับ notifications
+  const [notifications, setNotifications] = useState([])
+  const [lastAttendanceCheck, setLastAttendanceCheck] = useState(null)
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -42,6 +47,198 @@ const EnhancedTeacherDashboard = () => {
   // FastAPI URL
   const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
 
+  // เพิ่มฟังก์ชันสำหรับแสดง notification
+  const addNotification = (message, type = 'info', duration = 5000) => {
+    const id = Date.now()
+    const notification = { id, message, type, timestamp: new Date() }
+    
+    setNotifications(prev => [...prev, notification])
+    
+    // Auto remove notification
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, duration)
+  }
+
+  // เพิ่มฟังก์ชันสำหรับดึงข้อมูลนักเรียนใน session ผ่าน FastAPI
+  const fetchSessionStudents = async (sessionData) => {
+    try {
+      if (!sessionData?.class_id) return []
+
+      console.log('🔍 Fetching students for session via FastAPI:', sessionData.class_id)
+      
+      // ใช้ FastAPI endpoint ที่สร้างไว้
+      const response = await fetch(`${FASTAPI_URL}/api/class/${sessionData.class_id}/students`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        const students = data.students || []
+        
+        console.log(`✅ FastAPI returned ${students.length} students for class ${sessionData.class_id}`)
+        console.log(`📋 Enrollment methods tried:`, data.enrollment_methods_tried)
+        
+        if (students.length === 0) {
+          console.warn('⚠️ No students found via FastAPI, trying Supabase fallback...')
+          return await fetchSessionStudentsFallback(sessionData.class_id)
+        }
+        
+        // แสดงข้อมูล debug
+        addNotification(
+          `📚 โหลดข้อมูลคลาส: พบนักเรียน ${students.length} คน`,
+          'info',
+          3000
+        )
+        
+        return students.map(student => ({
+          student_id: student.student_id,
+          email: student.email,
+          full_name: student.full_name || 'ไม่ระบุชื่อ',
+          user_id: student.user_id,
+          enrollment_method: student.enrollment_method,
+          has_face_embedding: student.has_face_embedding || false
+        }))
+      } else {
+        console.error('❌ FastAPI returned error:', data.error)
+        addNotification(`❌ ไม่สามารถโหลดข้อมูลนักเรียนได้: ${data.error}`, 'error')
+        return await fetchSessionStudentsFallback(sessionData.class_id)
+      }
+      
+    } catch (error) {
+      console.error('❌ Error fetching students via FastAPI:', error)
+      addNotification(`⚠️ เปลี่ยนไปใช้วิธีสำรอง: ${error.message}`, 'error', 3000)
+      return await fetchSessionStudentsFallback(sessionData.class_id)
+    }
+  }
+
+  // ฟังก์ชันสำรองสำหรับดึงข้อมูลนักเรียน
+  const fetchSessionStudentsFallback = async (classId) => {
+    try {
+      console.log('🔄 Using Supabase fallback for class:', classId)
+      
+      // วิธีที่ 1: ลองใช้ class_students table
+      try {
+        const { data: classStudentsData, error: classStudentsError } = await supabase
+          .from('class_students')
+          .select(`
+            user_id,
+            users!inner(id, school_id, email, full_name)
+          `)
+          .eq('class_id', classId)
+
+        if (!classStudentsError && classStudentsData && classStudentsData.length > 0) {
+          const students = classStudentsData.map(record => ({
+            student_id: record.users.school_id,
+            email: record.users.email,
+            full_name: record.users.full_name || 'ไม่ระบุชื่อ',
+            user_id: record.users.id,
+            enrollment_method: 'supabase_fallback_join'
+          })).filter(student => student.student_id)
+
+          console.log(`✅ Fallback: Found ${students.length} students via class_students table`)
+          return students
+        }
+      } catch (classStudentsErr) {
+        console.warn('⚠️ class_students fallback failed:', classStudentsErr)
+      }
+
+      // วิธีที่ 2: ใช้ทุกคนที่มี face embeddings (สำหรับ debug)
+      try {
+        const { data: embeddingsData, error: embeddingsError } = await supabase
+          .from('student_face_embeddings')
+          .select('student_id')
+          .eq('is_active', true)
+
+        if (!embeddingsError && embeddingsData) {
+          const studentIds = [...new Set(embeddingsData.map(e => e.student_id))]
+          
+          const students = []
+          for (const studentId of studentIds) {
+            try {
+              const { data: userData } = await supabase
+                .from('users')
+                .select('id, school_id, email, full_name')
+                .eq('school_id', studentId)
+                .single()
+
+              if (userData) {
+                students.push({
+                  student_id: userData.school_id,
+                  email: userData.email,
+                  full_name: userData.full_name || 'ไม่ระบุชื่อ',
+                  user_id: userData.id,
+                  enrollment_method: 'supabase_fallback_embeddings'
+                })
+              }
+            } catch (userErr) {
+              console.warn(`Could not fetch user data for ${studentId}:`, userErr)
+            }
+          }
+
+          console.log(`✅ Fallback: Found ${students.length} students via embeddings method`)
+          return students
+        }
+      } catch (fallbackErr) {
+        console.error('❌ Embeddings fallback failed:', fallbackErr)
+      }
+
+      return []
+    } catch (error) {
+      console.error('❌ Error in fallback method:', error )
+    
+    // เพิ่มฟังก์ชันตรวจสอบ attendance ใหม่
+  const checkForNewAttendance = async () => {
+  if (!currentSession) return;
+
+  try {
+    const { data: latestRecords, error } = await supabase
+      .from('attendance_records')
+      .select(`
+        *,
+        users!inner(full_name, school_id)
+      `)
+      .eq('session_id', currentSession.id)
+      .order('check_in_time', { ascending: false })
+      .limit(5);
+
+    if (error) throw error;
+
+    if (latestRecords && latestRecords.length > 0) {
+      const latestRecord = latestRecords[0];
+      const latestTime = new Date(latestRecord.check_in_time);
+
+      // ตรวจสอบว่ามี attendance ใหม่หรือไม่
+      if (!lastAttendanceCheck || latestTime > lastAttendanceCheck) {
+        const studentName =
+          latestRecord.users?.full_name || latestRecord.student_id;
+        const status =
+          latestRecord.status === "present"
+            ? "มาเรียน"
+            : latestRecord.status === "late"
+            ? "มาสาย"
+            : "ขาดเรียน";
+        const detectionMethod = latestRecord.detection_method?.includes("motion")
+          ? "Motion Detection"
+          : "Manual Capture";
+
+        addNotification(
+          `✅ ${studentName} เช็คชื่อแล้ว (${status}) - ${detectionMethod}`,
+          "success",
+          7000
+        );
+
+        setLastAttendanceCheck(latestTime);
+      }
+    }
+  } catch (error) {
+    console.error("Error checking for new attendance:", error);
+  }
+};
+
   useEffect(() => {
     // Debug user information
     console.log('=== User Debug Info ===')
@@ -59,10 +256,16 @@ const EnhancedTeacherDashboard = () => {
   useEffect(() => {
     if (currentSession) {
       fetchMotionStats()
-      const statsInterval = setInterval(fetchMotionStats, 10000) // Every 10s
+      checkForNewAttendance() // เช็ค attendance ใหม่
+      
+      const statsInterval = setInterval(() => {
+        fetchMotionStats()
+        checkForNewAttendance()
+      }, 10000) // Every 10s
+      
       return () => clearInterval(statsInterval)
     }
-  }, [currentSession])
+  }, [currentSession, lastAttendanceCheck])
 
   const fetchTeacherData = async () => {
   if (!user) return
@@ -158,10 +361,24 @@ const EnhancedTeacherDashboard = () => {
       })
       
       setCurrentSession(selectedSession)
+      
+      // ดึงข้อมูลนักเรียนใน session
+      const students = await fetchSessionStudents(selectedSession)
+      setSessionStudents(students)
+      
+      if (students.length > 0) {
+        addNotification(
+          `📚 เริ่ม session: ${selectedSession.classes?.subject_name} (${students.length} นักเรียน)`,
+          'info',
+          5000
+        )
+      }
+      
       await fetchAttendanceRecords(selectedSession.id)
     } else {
       console.log('ℹ️ No active sessions found')
       setCurrentSession(null)
+      setSessionStudents([])
       setAttendanceRecords([])
     }
 
@@ -171,6 +388,7 @@ const EnhancedTeacherDashboard = () => {
     setLoading(false)
   }
 }
+
   const fetchAttendanceRecords = async (sessionId) => {
   try {
     console.log(`🔍 Fetching attendance for session: ${sessionId}`)
@@ -237,6 +455,7 @@ const EnhancedTeacherDashboard = () => {
     setAttendanceRecords([]) // ตั้งค่าเป็น array ว่างเมื่อมีข้อผิดพลาด
   }
 }
+
 const handleManualCaptureFromVideo = async (imageBlob) => {
   if (!currentSession) {
     alert('ไม่พบเซสชันที่ใช้งานอยู่')
@@ -263,7 +482,10 @@ const handleManualCaptureFromVideo = async (imageBlob) => {
 
     const result = await response.json()
     
-    alert(`📸 Manual Capture สำเร็จ!\n\nพบใบหน้า: ${result.faces_detected} คน\nPriority: ${result.processing_priority}`)
+    addNotification(
+      `📸 Manual Capture สำเร็จ! พบใบหน้า: ${result.faces_detected} คน`,
+      'success'
+    )
     
     // Refresh attendance records
     setTimeout(() => {
@@ -272,7 +494,7 @@ const handleManualCaptureFromVideo = async (imageBlob) => {
     
   } catch (error) {
     console.error('Error taking manual capture:', error)
-    alert('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message)
+    addNotification('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message, 'error')
   } finally {
     setActionLoading(false)
   }
@@ -407,14 +629,17 @@ const handleManualCaptureFromVideo = async (imageBlob) => {
 
       const result = await response.json()
       
-      alert(`🎯 เริ่มเซสชัน Motion Detection สำเร็จ!\n\nSession ID: ${result.session_id}\nMotion Threshold: ${result.motion_threshold}\nCooldown: ${result.cooldown_seconds}s`)
+      addNotification(
+        `🎯 เริ่มเซสชัน Motion Detection สำเร็จ! Session ID: ${result.session_id}`,
+        'success'
+      )
       
       setShowStartSessionModal(false)
       fetchTeacherData()
       
     } catch (error) {
       console.error('Error starting motion detection session:', error)
-      alert('เกิดข้อผิดพลาดในการเริ่มเซสชัน: ' + error.message)
+      addNotification('เกิดข้อผิดพลาดในการเริ่มเซสชัน: ' + error.message, 'error')
     } finally {
       setActionLoading(false)
     }
@@ -456,30 +681,19 @@ const handleManualCaptureFromVideo = async (imageBlob) => {
     const result = await response.json()
     console.log('✅ Session ended successfully:', result)
 
-    alert(`✅ จบเซสชันสำเร็จ!\n\nSession ID: ${sessionId}\nType: ${result.session_type || 'Unknown'}`)
+    addNotification(
+      `✅ จบเซสชันสำเร็จ! Session ID: ${sessionId}`,
+      'success'
+    )
     
     // รีเฟรชข้อมูล
     fetchTeacherData()
     
   } catch (error) {
     console.error('❌ Error ending session:', error)
-    alert(`❌ เกิดข้อผิดพลาดในการจบเซสชัน:\n\n${error.message}`)
+    addNotification(`❌ เกิดข้อผิดพลาดในการจบเซสชัน: ${error.message}`, 'error')
   } finally {
     setActionLoading(false)
-  }
-}
-
-// เพิ่ม function สำหรับ debug table schema
-const debugTableSchema = async (tableName) => {
-  try {
-    const response = await fetch(`${FASTAPI_URL}/api/debug/schema/${tableName}`)
-    if (response.ok) {
-      const data = await response.json()
-      console.log(`📊 Table ${tableName} schema:`, data)
-      return data
-    }
-  } catch (error) {
-    console.error(`Error checking ${tableName} schema:`, error)
   }
 }
 
@@ -555,7 +769,10 @@ const debugTableSchema = async (tableName) => {
 
       const result = await response.json()
       
-      alert(`📸 Manual Capture สำเร็จ!\n\nพบใบหน้า: ${result.faces_detected} คน\nPriority: ${result.processing_priority}\nQueue Size: ${result.queue_size}`)
+      addNotification(
+        `📸 Manual Capture สำเร็จ! พบใบหน้า: ${result.faces_detected} คน`,
+        'success'
+      )
       
       // Refresh attendance records
       setTimeout(() => {
@@ -564,7 +781,7 @@ const debugTableSchema = async (tableName) => {
       
     } catch (error) {
       console.error('Error taking manual capture:', error)
-      alert('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message)
+      addNotification('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message, 'error')
     } finally {
       setActionLoading(false)
     }
@@ -613,6 +830,39 @@ const debugTableSchema = async (tableName) => {
 
   return ( 
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`max-w-sm p-4 rounded-lg shadow-lg transition-all duration-300 transform ${
+              notification.type === 'success' 
+                ? 'bg-green-500 text-white' 
+                : notification.type === 'error'
+                ? 'bg-red-500 text-white'
+                : 'bg-blue-500 text-white'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium">{notification.message}</span>
+              </div>
+              <button
+                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="text-xs opacity-75 mt-1">
+              {notification.timestamp.toLocaleTimeString('th-TH')}
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Header */}
       <header className="bg-white shadow-lg border-b border-blue-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -649,6 +899,56 @@ const debugTableSchema = async (tableName) => {
                 <p className="text-green-100 text-sm">
                   ประเภท: {currentSession.session_type === 'motion_detection' ? 'Motion Detection' : currentSession.session_type}
                 </p>
+              )}
+              
+              {/* Session Student Information */}
+              <div className="mt-3 flex items-center space-x-4">
+                <div className="bg-green-700 rounded-lg px-3 py-1">
+                  <span className="text-sm font-medium">👥 นักเรียนในคลาส: {sessionStudents.length} คน</span>
+                </div>
+                <div className="bg-green-700 rounded-lg px-3 py-1">
+                  <span className="text-sm font-medium">✅ เช็คชื่อแล้ว: {attendanceRecords.length} คน</span>
+                </div>
+                <div className="bg-green-700 rounded-lg px-3 py-1">
+                  <span className="text-sm font-medium">
+                    📊 อัตราเข้าเรียน: {sessionStudents.length > 0 ? Math.round((attendanceRecords.length / sessionStudents.length) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+              
+              {/* Student Status List */}
+              {sessionStudents.length > 0 && (
+                <div className="mt-4">
+                  <details className="bg-green-700 rounded-lg p-3">
+                    <summary className="cursor-pointer text-sm font-medium mb-2">
+                      📋 รายชื่อนักเรียน (คลิกเพื่อดู)
+                    </summary>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                      {sessionStudents.map((student) => {
+                        const hasCheckedIn = attendanceRecords.some(record => 
+                          record.student_id === student.student_id || 
+                          record.student_email === student.email
+                        )
+                        
+                        return (
+                          <div 
+                            key={student.student_id} 
+                            className={`text-xs px-2 py-1 rounded ${
+                              hasCheckedIn 
+                                ? 'bg-green-800 text-green-100' 
+                                : 'bg-yellow-600 text-yellow-100'
+                            }`}
+                          >
+                            <span className="mr-1">
+                              {hasCheckedIn ? '✅' : '⏳'}
+                            </span>
+                            {student.full_name || student.student_id}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </details>
+                </div>
               )}
             </div>
             <div className="flex space-x-3">
@@ -736,8 +1036,6 @@ const debugTableSchema = async (tableName) => {
                 <p className="text-sm font-medium text-gray-600">คลาสที่สอน</p>
                 <p className="text-3xl font-bold text-gray-900">{classes.length}</p>
               </div>
-              
-              
             </div>
           </div>
 
@@ -931,8 +1229,18 @@ const debugTableSchema = async (tableName) => {
         {currentSession && (
           <div className="bg-white rounded-xl shadow-lg border border-gray-200">
             <div className="p-8 border-b border-gray-200">
-              <h2 className="text-2xl font-bold text-gray-900">👥 บันทึกการเข้าเรียน</h2>
-              <p className="text-gray-600 mt-1">รายชื่อนักเรียนที่เช็คชื่อแล้ว - เซสชันปัจจุบัน</p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">👥 บันทึกการเข้าเรียน</h2>
+                  <p className="text-gray-600 mt-1">รายชื่อนักเรียนที่เช็คชื่อแล้ว - เซสชันปัจจุบัน</p>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-green-600">
+                    {attendanceRecords.length}/{sessionStudents.length}
+                  </div>
+                  <div className="text-sm text-gray-500">เช็คชื่อแล้ว</div>
+                </div>
+              </div>
             </div>
 
             <div className="p-8">
@@ -945,6 +1253,9 @@ const debugTableSchema = async (tableName) => {
                   </div>
                   <h3 className="text-lg font-medium text-gray-900 mb-2">ยังไม่มีการเช็คชื่อ</h3>
                   <p className="text-gray-500">รอให้ระบบ Motion Detection ตรวจจับนักเรียน หรือใช้ Manual Capture</p>
+                  {sessionStudents.length > 0 && (
+                    <p className="text-blue-600 mt-2">มีนักเรียน {sessionStudents.length} คนในคลาสนี้</p>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1353,6 +1664,11 @@ const debugTableSchema = async (tableName) => {
                     <p className="text-blue-600 text-sm">
                       เริ่มเมื่อ: {new Date(currentSession.start_time).toLocaleString('th-TH')}
                     </p>
+                    <div className="mt-2 flex space-x-4 text-sm">
+                      <span className="text-blue-600">👥 {sessionStudents.length} คน</span>
+                      <span className="text-green-600">✅ {attendanceRecords.length} เช็คชื่อแล้ว</span>
+                      <span className="text-yellow-600">⏳ {sessionStudents.length - attendanceRecords.length} ยังไม่เช็ค</span>
+                    </div>
                   </div>
 
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
@@ -1487,22 +1803,61 @@ const debugTableSchema = async (tableName) => {
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">จบเซสชัน</p>
-                      <p className="font-medium">{new Date(showSessionDetailsModal.end_time).toLocaleString('th-TH')}</p>
+                      <p className="font-medium">{showSessionDetailsModal.end_time ? new Date(showSessionDetailsModal.end_time).toLocaleString('th-TH') : 'ยังไม่จบ'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Motion Threshold</p>
-                      <p className="font-medium">{showSessionDetailsModal.motion_threshold}</p>
+                      <p className="font-medium">{showSessionDetailsModal.motion_threshold || 'N/A'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Cooldown</p>
-                      <p className="font-medium">{showSessionDetailsModal.cooldown_seconds} วินาที</p>
+                      <p className="font-medium">{showSessionDetailsModal.cooldown_seconds || 'N/A'} วินาที</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Student Summary */}
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6">
+                  <h4 className="text-lg font-bold text-gray-900 mb-4">📋 สรุปนักเรียน</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                      <p className="text-2xl font-bold text-blue-600">{sessionStudents.length}</p>
+                      <p className="text-sm text-gray-600">ทั้งหมด</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                      <p className="text-2xl font-bold text-green-600">{attendanceRecords.filter(r => r.status === 'present').length}</p>
+                      <p className="text-sm text-gray-600">มาเรียน</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                      <p className="text-2xl font-bold text-yellow-600">{attendanceRecords.filter(r => r.status === 'late').length}</p>
+                      <p className="text-sm text-gray-600">มาสาย</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                      <p className="text-2xl font-bold text-red-600">{sessionStudents.length - attendanceRecords.length}</p>
+                      <p className="text-sm text-gray-600">ยังไม่เช็ค</p>
+                    </div>
+                  </div>
+                  
+                  {/* Attendance Rate */}
+                  <div className="mt-4 bg-white rounded-lg p-4 shadow-sm">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium text-gray-700">อัตราการเข้าเรียน</span>
+                      <span className="text-sm text-gray-500">
+                        {attendanceRecords.length}/{sessionStudents.length} ({sessionStudents.length > 0 ? Math.round((attendanceRecords.length / sessionStudents.length) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div 
+                        className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all duration-500" 
+                        style={{ width: `${sessionStudents.length > 0 ? (attendanceRecords.length / sessionStudents.length) * 100 : 0}%` }}
+                      ></div>
                     </div>
                   </div>
                 </div>
 
                 {/* Motion Statistics */}
                 {motionStats && (
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-6">
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6">
                     <h4 className="text-lg font-bold text-gray-900 mb-4">📈 สถิติ Motion Detection</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-4 bg-white rounded-lg shadow-sm">
@@ -1552,7 +1907,7 @@ const debugTableSchema = async (tableName) => {
 
                 {/* Motion Strength Distribution */}
                 {motionStats?.recent_activity?.motion_strength_distribution && (
-                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6">
+                  <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-lg p-6">
                     <h4 className="text-lg font-bold text-gray-900 mb-4">🎯 การกระจายของ Motion Strength</h4>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="text-center p-4 bg-white rounded-lg shadow-sm">
@@ -1577,28 +1932,51 @@ const debugTableSchema = async (tableName) => {
                   </div>
                 )}
 
-                {/* Attendance Summary */}
-                <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-6">
-                  <h4 className="text-lg font-bold text-gray-900 mb-4">👥 สรุปการเข้าเรียน</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                      <p className="text-xl font-bold text-green-600">
-                        {attendanceRecords.filter(r => r.status === 'present').length}
-                      </p>
-                      <p className="text-sm text-gray-600">มาเรียน</p>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                      <p className="text-xl font-bold text-yellow-600">
-                        {attendanceRecords.filter(r => r.status === 'late').length}
-                      </p>
-                      <p className="text-sm text-gray-600">มาสาย</p>
-                    </div>
-                    <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                      <p className="text-xl font-bold text-gray-600">{attendanceRecords.length}</p>
-                      <p className="text-sm text-gray-600">รวมทั้งหมด</p>
+                {/* Students List */}
+                {sessionStudents.length > 0 && (
+                  <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-6">
+                    <h4 className="text-lg font-bold text-gray-900 mb-4">👥 รายชื่อนักเรียนทั้งหมด</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {sessionStudents.map((student) => {
+                        const attendanceRecord = attendanceRecords.find(record => 
+                          record.student_id === student.student_id || 
+                          record.student_email === student.email
+                        )
+                        
+                        return (
+                          <div 
+                            key={student.student_id} 
+                            className={`p-3 rounded-lg border ${
+                              attendanceRecord 
+                                ? attendanceRecord.status === 'present'
+                                  ? 'bg-green-100 border-green-300'
+                                  : 'bg-yellow-100 border-yellow-300'
+                                : 'bg-gray-100 border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-2">
+                              <span className="text-lg">
+                                {attendanceRecord 
+                                  ? attendanceRecord.status === 'present' ? '✅' : '⏰'
+                                  : '⏳'
+                                }
+                              </span>
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{student.full_name || student.student_id}</p>
+                                <p className="text-xs text-gray-600">{student.student_id}</p>
+                                {attendanceRecord && (
+                                  <p className="text-xs text-gray-500">
+                                    เช็คชื่อ: {new Date(attendanceRecord.check_in_time).toLocaleTimeString('th-TH')}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="flex justify-end mt-8">
@@ -1624,6 +2002,8 @@ const debugTableSchema = async (tableName) => {
       )}
     </div>
   )
+    }
+  }
 }
 
-export default EnhancedTeacherDashboard
+export default EnhancedTeacherDashboard 
