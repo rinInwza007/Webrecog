@@ -29,6 +29,7 @@ import pickle
 import hashlib
 from typing import Tuple
 from scipy.spatial.distance import cdist
+from datetime import timezone
 
 # Load environment variables
 load_dotenv()
@@ -910,7 +911,445 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
     except Exception as e:
         logger.error(f"Error in advanced face processing: {e}")
         return []
-    
+@app.get("/api/class/{class_id}/students")
+async def get_class_students(class_id: str):
+    """Get all students enrolled in a class with detailed information"""
+    try:
+        logger.info(f"🔍 Getting students for class: {class_id}")
+        
+        students = []
+        enrollment_methods_tried = []
+        
+        # Method 1: Try class_students table with join
+        try:
+            logger.info("📋 Trying method 1: class_students table with join")
+            
+            # First, try the direct join approach
+            try:
+                result = supabase.table('class_students').select('''
+                    user_id,
+                    users!inner(id, school_id, email, full_name, first_name, last_name)
+                ''').eq('class_id', class_id).execute()
+                
+                if result.data and len(result.data) > 0:
+                    for record in result.data:
+                        user_data = record.get('users', {})
+                        if user_data and user_data.get('school_id'):
+                            students.append({
+                                'student_id': user_data['school_id'],
+                                'email': user_data['email'],
+                                'full_name': user_data.get('full_name') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                                'user_id': user_data['id'],
+                                'enrollment_method': 'class_students_join'
+                            })
+                    
+                    if students:
+                        enrollment_methods_tried.append("class_students_join: SUCCESS")
+                        logger.info(f"✅ Method 1 SUCCESS: Found {len(students)} students via class_students join")
+                    else:
+                        enrollment_methods_tried.append("class_students_join: No valid students")
+                        
+            except Exception as join_error:
+                enrollment_methods_tried.append(f"class_students_join: ERROR - {str(join_error)}")
+                logger.warning(f"Join method failed: {join_error}")
+                
+                # Fallback: Manual join
+                logger.info("📋 Trying manual join method")
+                cs_result = supabase.table('class_students').select('user_id').eq('class_id', class_id).execute()
+                
+                if cs_result.data:
+                    enrollment_methods_tried.append(f"class_students_manual: Found {len(cs_result.data)} user_ids")
+                    
+                    for cs_record in cs_result.data:
+                        try:
+                            user_result = supabase.table('users').select('id, school_id, email, full_name, first_name, last_name').eq('id', cs_record['user_id']).single().execute()
+                            
+                            if user_result.data and user_result.data.get('school_id'):
+                                user_data = user_result.data
+                                students.append({
+                                    'student_id': user_data['school_id'],
+                                    'email': user_data['email'],
+                                    'full_name': user_data.get('full_name') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                                    'user_id': user_data['id'],
+                                    'enrollment_method': 'class_students_manual'
+                                })
+                        except Exception as user_error:
+                            logger.warning(f"Could not fetch user {cs_record['user_id']}: {user_error}")
+                            continue
+                    
+                    if students:
+                        enrollment_methods_tried.append("class_students_manual: SUCCESS")
+                        logger.info(f"✅ Manual join SUCCESS: Found {len(students)} students")
+                else:
+                    enrollment_methods_tried.append("class_students_manual: No data")
+                    
+        except Exception as method1_error:
+            enrollment_methods_tried.append(f"class_students_all: ERROR - {str(method1_error)}")
+            logger.error(f"Method 1 completely failed: {method1_error}")
+        
+        # Method 2: Check class table for student list fields
+        if not students:
+            try:
+                logger.info("📋 Trying method 2: class table student fields")
+                
+                class_result = supabase.table('classes').select('*').eq('class_id', class_id).execute()
+                
+                if class_result.data:
+                    class_data = class_result.data[0]
+                    enrollment_methods_tried.append(f"class_table: Found class data")
+                    
+                    # Check for various student list fields
+                    student_fields = ['students', 'student_list', 'enrolled_students', 'student_ids', 'student_emails']
+                    
+                    for field in student_fields:
+                        if field in class_data and class_data[field]:
+                            field_data = class_data[field]
+                            enrollment_methods_tried.append(f"class_table_{field}: Found data")
+                            
+                            # Handle different data formats
+                            if isinstance(field_data, list):
+                                student_identifiers = field_data
+                            elif isinstance(field_data, str):
+                                # Try parsing as JSON first
+                                try:
+                                    student_identifiers = json.loads(field_data)
+                                except:
+                                    # Split by comma if it's a comma-separated string
+                                    student_identifiers = [s.strip() for s in field_data.split(',') if s.strip()]
+                            else:
+                                continue
+                            
+                            # Process identifiers
+                            for identifier in student_identifiers:
+                                if not identifier:
+                                    continue
+                                    
+                                try:
+                                    # Try as email first
+                                    if '@' in identifier:
+                                        user_result = supabase.table('users').select('id, school_id, email, full_name, first_name, last_name').eq('email', identifier).single().execute()
+                                    else:
+                                        # Try as school_id
+                                        user_result = supabase.table('users').select('id, school_id, email, full_name, first_name, last_name').eq('school_id', identifier).single().execute()
+                                    
+                                    if user_result.data:
+                                        user_data = user_result.data
+                                        students.append({
+                                            'student_id': user_data['school_id'],
+                                            'email': user_data['email'],
+                                            'full_name': user_data.get('full_name') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                                            'user_id': user_data['id'],
+                                            'enrollment_method': f'class_table_{field}'
+                                        })
+                                        
+                                except Exception as id_error:
+                                    logger.warning(f"Could not process identifier {identifier}: {id_error}")
+                                    continue
+                            
+                            if students:
+                                enrollment_methods_tried.append(f"class_table_{field}: SUCCESS")
+                                logger.info(f"✅ Method 2 SUCCESS: Found {len(students)} students via {field}")
+                                break
+                else:
+                    enrollment_methods_tried.append("class_table: Class not found")
+                    
+            except Exception as method2_error:
+                enrollment_methods_tried.append(f"class_table: ERROR - {str(method2_error)}")
+                logger.error(f"Method 2 failed: {method2_error}")
+        
+        # Method 3: Fallback - All users with face embeddings (for development/testing)
+        if not students:
+            try:
+                logger.info("📋 Trying method 3: All users with face embeddings (fallback)")
+                
+                # Get all active face embeddings
+                embeddings_result = supabase.table('student_face_embeddings').select('student_id').eq('is_active', True).execute()
+                
+                if embeddings_result.data:
+                    unique_student_ids = list(set([e['student_id'] for e in embeddings_result.data if e.get('student_id')]))
+                    enrollment_methods_tried.append(f"face_embeddings_fallback: Found {len(unique_student_ids)} unique student_ids")
+                    
+                    for student_id in unique_student_ids:
+                        try:
+                            user_result = supabase.table('users').select('id, school_id, email, full_name, first_name, last_name').eq('school_id', student_id).single().execute()
+                            
+                            if user_result.data:
+                                user_data = user_result.data
+                                students.append({
+                                    'student_id': user_data['school_id'],
+                                    'email': user_data['email'],
+                                    'full_name': user_data.get('full_name') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                                    'user_id': user_data['id'],
+                                    'enrollment_method': 'face_embeddings_fallback'
+                                })
+                                
+                        except Exception as fallback_error:
+                            logger.warning(f"Could not fetch user for student_id {student_id}: {fallback_error}")
+                            continue
+                    
+                    if students:
+                        enrollment_methods_tried.append("face_embeddings_fallback: SUCCESS")
+                        logger.info(f"✅ Method 3 SUCCESS: Found {len(students)} students via fallback")
+                else:
+                    enrollment_methods_tried.append("face_embeddings_fallback: No embeddings found")
+                    
+            except Exception as method3_error:
+                enrollment_methods_tried.append(f"face_embeddings_fallback: ERROR - {str(method3_error)}")
+                logger.error(f"Method 3 failed: {method3_error}")
+        
+        # Method 4: Environment variable override
+        if not students:
+            try:
+                manual_students_env = os.getenv("MANUAL_STUDENTS_FOR_CLASS", "")
+                if manual_students_env:
+                    manual_student_ids = [s.strip() for s in manual_students_env.split(',') if s.strip()]
+                    enrollment_methods_tried.append(f"env_override: Found {len(manual_student_ids)} manual student_ids")
+                    
+                    for student_id in manual_student_ids:
+                        try:
+                            user_result = supabase.table('users').select('id, school_id, email, full_name, first_name, last_name').eq('school_id', student_id).single().execute()
+                            
+                            if user_result.data:
+                                user_data = user_result.data
+                                students.append({
+                                    'student_id': user_data['school_id'],
+                                    'email': user_data['email'],
+                                    'full_name': user_data.get('full_name') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip(),
+                                    'user_id': user_data['id'],
+                                    'enrollment_method': 'env_override'
+                                })
+                        except Exception as env_error:
+                            logger.warning(f"Could not fetch user for env student_id {student_id}: {env_error}")
+                            continue
+                    
+                    if students:
+                        enrollment_methods_tried.append("env_override: SUCCESS")
+                        logger.info(f"✅ Method 4 SUCCESS: Found {len(students)} students via env override")
+            except Exception as method4_error:
+                enrollment_methods_tried.append(f"env_override: ERROR - {str(method4_error)}")
+        
+        # Remove duplicates based on student_id
+        unique_students = []
+        seen_student_ids = set()
+        
+        for student in students:
+            if student['student_id'] not in seen_student_ids:
+                unique_students.append(student)
+                seen_student_ids.add(student['student_id'])
+        
+        logger.info(f"📊 Final result: {len(unique_students)} unique students for class {class_id}")
+        
+        return {
+            "success": True,
+            "class_id": class_id,
+            "students": unique_students,
+            "total_students": len(unique_students),
+            "enrollment_methods_tried": enrollment_methods_tried,
+            "debug_info": {
+                "total_found": len(students),
+                "after_deduplication": len(unique_students),
+                "methods_attempted": len(enrollment_methods_tried)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting class students: {e}")
+        return {
+            "success": False,
+            "class_id": class_id,
+            "error": str(e),
+            "students": [],
+            "total_students": 0,
+            "enrollment_methods_tried": enrollment_methods_tried if 'enrollment_methods_tried' in locals() else [],
+            "timestamp": datetime.now().isoformat()
+        }
+@app.get("/api/class/{class_id}/info")
+async def get_class_info(class_id: str):
+    """Get comprehensive class information including students and embeddings"""
+    try:
+        logger.info(f"🔍 Getting comprehensive info for class: {class_id}")
+        
+        # Get class details
+        class_result = supabase.table('classes').select('*').eq('class_id', class_id).execute()
+        
+        if not class_result.data:
+            raise HTTPException(status_code=404, detail=f"Class {class_id} not found")
+        
+        class_data = class_result.data[0]
+        
+        # Get students using the dedicated endpoint logic
+        students_response = await get_class_students(class_id)
+        students = students_response.get('students', [])
+        
+        # Check face embeddings for each student
+        students_with_embeddings = []
+        embedding_stats = {
+            'total_students': len(students),
+            'with_embeddings': 0,
+            'without_embeddings': 0,
+            'embedding_details': []
+        }
+        
+        for student in students:
+            try:
+                embedding_result = supabase.table('student_face_embeddings').select('*').eq('student_id', student['student_id']).eq('is_active', True).execute()
+                
+                has_embedding = bool(embedding_result.data)
+                student_embedding_info = {
+                    'student_id': student['student_id'],
+                    'full_name': student['full_name'],
+                    'has_embedding': has_embedding,
+                    'embedding_count': len(embedding_result.data) if embedding_result.data else 0
+                }
+                
+                if has_embedding:
+                    embedding_stats['with_embeddings'] += 1
+                    embedding_data = embedding_result.data[0]
+                    student_embedding_info.update({
+                        'face_quality': embedding_data.get('face_quality', 0),
+                        'enrollment_type': embedding_data.get('enrollment_type', 'unknown'),
+                        'created_at': embedding_data.get('created_at'),
+                        'system_version': embedding_data.get('system_version', 'unknown')
+                    })
+                else:
+                    embedding_stats['without_embeddings'] += 1
+                
+                embedding_stats['embedding_details'].append(student_embedding_info)
+                students_with_embeddings.append({
+                    **student,
+                    'has_face_embedding': has_embedding,
+                    'embedding_info': student_embedding_info
+                })
+                
+            except Exception as embedding_error:
+                logger.warning(f"Error checking embeddings for {student['student_id']}: {embedding_error}")
+                students_with_embeddings.append({
+                    **student,
+                    'has_face_embedding': False,
+                    'embedding_info': None
+                })
+                embedding_stats['without_embeddings'] += 1
+        
+        # Calculate readiness score
+        readiness_score = (embedding_stats['with_embeddings'] / max(embedding_stats['total_students'], 1)) * 100
+        
+        return {
+            "success": True,
+            "class_id": class_id,
+            "class_info": class_data,
+            "students": students_with_embeddings,
+            "enrollment_methods_tried": students_response.get('enrollment_methods_tried', []),
+            "embedding_statistics": embedding_stats,
+            "readiness": {
+                "score": round(readiness_score, 1),
+                "status": "ready" if readiness_score >= 80 else "partially_ready" if readiness_score >= 50 else "not_ready",
+                "missing_embeddings": embedding_stats['without_embeddings'],
+                "recommendations": [
+                    f"Class readiness: {readiness_score:.1f}%",
+                    f"{embedding_stats['with_embeddings']}/{embedding_stats['total_students']} students have face embeddings",
+                    "Ready for motion detection sessions" if readiness_score >= 80 else "Consider enrolling more students",
+                    f"{embedding_stats['without_embeddings']} students need face enrollment" if embedding_stats['without_embeddings'] > 0 else "All students enrolled"
+                ]
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting class info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get class info: {str(e)}")
+@app.post("/api/debug/create-test-class-students")
+async def create_test_class_students():
+    """Development helper: Create test class-student relationships"""
+    try:
+        if not os.getenv("DEBUG", "false").lower() == "true":
+            raise HTTPException(status_code=403, detail="This endpoint is only available in debug mode")
+        
+        logger.info("🔧 Creating test class-student relationships")
+        
+        # Get existing classes
+        classes_result = supabase.table('classes').select('class_id, subject_name').execute()
+        
+        if not classes_result.data:
+            return {
+                "success": False,
+                "message": "No classes found to create test relationships"
+            }
+        
+        # Get users with face embeddings
+        embeddings_result = supabase.table('student_face_embeddings').select('student_id').eq('is_active', True).execute()
+        
+        if not embeddings_result.data:
+            return {
+                "success": False,
+                "message": "No students with face embeddings found"
+            }
+        
+        student_ids = list(set([e['student_id'] for e in embeddings_result.data]))
+        
+        # Get user_ids for these student_ids
+        user_ids = []
+        for student_id in student_ids:
+            try:
+                user_result = supabase.table('users').select('id').eq('school_id', student_id).single().execute()
+                if user_result.data:
+                    user_ids.append(user_result.data['id'])
+            except:
+                continue
+        
+        if not user_ids:
+            return {
+                "success": False,
+                "message": "No matching user_ids found for students with embeddings"
+            }
+        
+        # Create relationships for each class
+        created_relationships = []
+        
+        for class_data in classes_result.data:
+            class_id = class_data['class_id']
+            
+            # Check if relationships already exist
+            existing = supabase.table('class_students').select('user_id').eq('class_id', class_id).execute()
+            
+            if existing.data:
+                logger.info(f"Class {class_id} already has {len(existing.data)} student relationships")
+                continue
+            
+            # Create relationships for this class
+            relationships = []
+            for user_id in user_ids[:5]:  # Limit to 5 students per class for testing
+                relationships.append({
+                    'class_id': class_id,
+                    'user_id': user_id,
+                    'created_at': datetime.now().isoformat()
+                })
+            
+            try:
+                result = supabase.table('class_students').insert(relationships).execute()
+                if result.data:
+                    created_relationships.extend(result.data)
+                    logger.info(f"✅ Created {len(relationships)} relationships for class {class_id}")
+            except Exception as insert_error:
+                logger.error(f"Failed to create relationships for class {class_id}: {insert_error}")
+        
+        return {
+            "success": True,
+            "message": f"Created {len(created_relationships)} test class-student relationships",
+            "relationships_created": len(created_relationships),
+            "classes_processed": len(classes_result.data),
+            "students_available": len(user_ids),
+            "debug": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating test relationships: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 @app.post("/api/debug/analyze-similarity-distribution")
 async def analyze_similarity_distribution_advanced(
     class_id: str = Form(...),
@@ -1204,8 +1643,8 @@ def get_face_embedding_cached_advanced(student_id: str) -> Optional[np.ndarray]:
     return advanced_embedding_manager.get_embedding_advanced(student_id)
 
 # Update motion processing to use advanced features
-async def process_motion_triggered_background_advanced(item: Dict):
-    """Advanced motion processing with enhanced similarity"""
+async def process_motion_triggered_background(item: Dict):
+    """Process motion-triggered attendance capture - FIXED VERSION"""
     try:
         start_time = time.time()
         session_id = item['session_id']
@@ -1214,7 +1653,7 @@ async def process_motion_triggered_background_advanced(item: Dict):
         phase = item['phase']
         motion_strength = item['motion_strength']
         
-        logger.info(f"🚶 Advanced motion processing: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
+        logger.info(f"🚶 Processing motion-triggered capture: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
         
         # Process image
         try:
@@ -1227,23 +1666,22 @@ async def process_motion_triggered_background_advanced(item: Dict):
             logger.error(f"Error processing image: {e}")
             return
         
-        # Get enrolled students
+        # Get enrolled students (cached)
         enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
         
         if not enrolled_students:
-            logger.warning(f"No enrolled students for advanced motion capture: {session_id}")
+            logger.warning(f"No enrolled students for motion capture: {session_id}")
             return
         
-        # Use advanced face processing
-        detected_faces = process_faces_with_advanced_matching(
+        # Process faces with motion-specific optimizations
+        detected_faces = process_motion_triggered_faces(
             image_array, 
             enrolled_students, 
             config, 
-            motion_strength,
-            use_advanced_similarity=True
+            motion_strength
         )
         
-        # Record attendance with enhanced data
+        # Record new attendance
         new_records = 0
         for face_info in detected_faces:
             if not face_info['verified']:
@@ -1251,7 +1689,6 @@ async def process_motion_triggered_background_advanced(item: Dict):
             
             student_id = face_info['student_id']
             confidence = face_info['confidence']
-            confidence_level = face_info.get('confidence_level', 'medium')
             
             # Get student email
             try:
@@ -1270,14 +1707,45 @@ async def process_motion_triggered_background_advanced(item: Dict):
                     logger.info(f"Student {student_id} already recorded, skipping")
                     continue
                 
-                # Determine status
-                capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
-                session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+                # ===== FIX: Handle timezone-aware datetime comparison =====
+                # Parse capture time and session start time with proper timezone handling
+                capture_time_str = item['capture_time']
+                session_start_str = session_data['start_time']
+                
+                # Remove 'Z' and add '+00:00' for ISO format if needed
+                if capture_time_str.endswith('Z'):
+                    capture_time_str = capture_time_str.replace('Z', '+00:00')
+                if session_start_str.endswith('Z'):
+                    session_start_str = session_start_str.replace('Z', '+00:00')
+                
+                # Parse to timezone-aware datetime objects
+                from datetime import timezone
+                
+                try:
+                    if '+' in capture_time_str or 'Z' in item['capture_time']:
+                        capture_dt = datetime.fromisoformat(capture_time_str)
+                    else:
+                        # If no timezone info, assume UTC
+                        capture_dt = datetime.fromisoformat(capture_time_str).replace(tzinfo=timezone.utc)
+                        
+                    if '+' in session_start_str or 'Z' in session_data['start_time']:
+                        session_start = datetime.fromisoformat(session_start_str)
+                    else:
+                        # If no timezone info, assume UTC
+                        session_start = datetime.fromisoformat(session_start_str).replace(tzinfo=timezone.utc)
+                except Exception as dt_error:
+                    logger.error(f"Error parsing datetime: {dt_error}")
+                    # Fallback: assume current time and session start are both UTC
+                    capture_dt = datetime.now(timezone.utc)
+                    session_start = datetime.now(timezone.utc)
+                
+                # Calculate on-time limit with timezone-aware datetime
                 on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
                 
+                # Now we can safely compare timezone-aware datetimes
                 status = 'present' if capture_dt <= on_time_limit else 'late'
                 
-                # Enhanced attendance record
+                # Record motion-triggered attendance
                 record_data = {
                     'session_id': session_id,
                     'student_email': student_email,
@@ -1285,55 +1753,162 @@ async def process_motion_triggered_background_advanced(item: Dict):
                     'check_in_time': item['capture_time'],
                     'status': status,
                     'face_match_score': confidence,
-                    'confidence_level': confidence_level,
-                    'detection_method': 'advanced_motion_triggered',
+                    'detection_method': 'motion_triggered',
                     'processing_phase': phase,
                     'face_quality': face_info.get('quality_score', 1.0),
                     'motion_strength': motion_strength,
                     'trigger_type': 'motion',
                     'device_id': item.get('device_id'),
-                    'advanced_metrics': json.dumps(face_info.get('advanced_analysis', [])),
-                    'created_at': datetime.now().isoformat()
+                    'created_at': datetime.now(timezone.utc).isoformat()
                 }
                 
                 supabase.table('attendance_records').insert(record_data).execute()
                 new_records += 1
-                logger.info(f"✅ Advanced attendance recorded for {student_id}: {status} (confidence: {confidence_level})")
+                logger.info(f"✅ Motion-triggered attendance recorded for {student_id}: {status}")
                 
             except Exception as e:
-                logger.error(f"❌ Error saving advanced record for {student_id}: {e}")
+                logger.error(f"❌ Error saving motion record for {student_id}: {e}")
                 continue
         
         processing_time = time.time() - start_time
         
-        # Update capture log with advanced metrics
-        advanced_metrics = {
-            'processing_method': 'advanced_similarity',
-            'confidence_distribution': {},
-            'similarity_statistics': {}
-        }
-        
-        # Calculate confidence distribution
-        for face in detected_faces:
-            confidence_level = face.get('confidence_level', 'unknown')
-            advanced_metrics['confidence_distribution'][confidence_level] = \
-                advanced_metrics['confidence_distribution'].get(confidence_level, 0) + 1
-        
+        # Update capture log
         supabase.table('motion_captures').update({
             'faces_detected': len(detected_faces),
             'faces_recognized': len([f for f in detected_faces if f['verified']]),
             'new_records': new_records,
             'processing_time_ms': int(processing_time * 1000),
-            'processing_status': 'completed',
-            'advanced_metrics': json.dumps(advanced_metrics),
-            'system_version': '6.0.0-advanced'
+            'processing_status': 'completed'
         }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
         
-        logger.info(f"🚀 ADVANCED motion capture complete: {new_records} new records in {processing_time:.2f}s")
+        logger.info(f"🤖 Motion capture complete: {new_records} new records in {processing_time:.2f}s")
         
     except Exception as e:
-        logger.error(f"❌ Error in advanced motion processing: {e}")
+        logger.error(f"❌ Error processing motion capture: {e}")
         
+        # Update status to failed
+        try:
+            supabase.table('motion_captures').update({
+                'processing_status': 'failed',
+                'error_message': str(e)
+            }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
+        except:
+            pass
+def parse_datetime_with_timezone(datetime_str: str):
+    """Parse datetime string with proper timezone handling"""
+    from datetime import timezone
+    
+    try:
+        # Handle 'Z' suffix (UTC)
+        if datetime_str.endswith('Z'):
+            datetime_str = datetime_str.replace('Z', '+00:00')
+        
+        # Parse ISO format datetime
+        if '+' in datetime_str or '-' in datetime_str[-6:]:
+            # Has timezone info
+            dt = datetime.fromisoformat(datetime_str)
+        else:
+            # No timezone info, assume UTC
+            dt = datetime.fromisoformat(datetime_str).replace(tzinfo=timezone.utc)
+        
+        return dt
+        
+    except Exception as e:
+        logger.error(f"Error parsing datetime '{datetime_str}': {e}")
+        # Fallback to current UTC time
+        return datetime.now(timezone.utc)
+
+# แทนที่ฟังก์ชัน process_motion_session_start ด้วย
+async def process_motion_session_start(item: Dict):
+    """Process session start for motion detection system - FIXED VERSION"""
+    try:
+        start_time = time.time()
+        session_id = item['session_id']
+        session_data = item['session_data']
+        
+        logger.info(f"🚀 Processing motion session start: {session_id}")
+        
+        # Process image
+        image_pil = Image.open(io.BytesIO(item['image_data']))
+        if image_pil.mode != 'RGB':
+            image_pil = image_pil.convert('RGB')
+        
+        image_array = np.array(image_pil)
+        
+        # Get enrolled students
+        enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
+        
+        if not enrolled_students:
+            logger.warning(f"No enrolled students for motion session start: {session_id}")
+            return
+        
+        # Process faces with high accuracy for session start
+        config = motion_processor.get_config('0-10')  # Use highest accuracy
+        detected_faces = process_motion_triggered_faces(
+            image_array, 
+            enrolled_students, 
+            config, 
+            item['motion_strength']
+        )
+        
+        # Record attendance for session start
+        new_records = 0
+        for face_info in detected_faces:
+            if not face_info['verified']:
+                continue
+            
+            student_id = face_info['student_id']
+            confidence = face_info['confidence']
+            
+            # Get student email
+            student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
+            
+            if not student_result.data:
+                continue
+            
+            student_email = student_result.data['email']
+            
+            # Record as 'present' for session start (no timing comparison needed)
+            from datetime import timezone
+            record_data = {
+                'session_id': session_id,
+                'student_email': student_email,
+                'student_id': student_id,
+                'check_in_time': item['capture_time'],
+                'status': 'present',  # Session start = present
+                'face_match_score': confidence,
+                'detection_method': 'motion_session_start',
+                'processing_phase': '0-10',
+                'face_quality': face_info.get('quality_score', 1.0),
+                'motion_strength': item['motion_strength'],
+                'trigger_type': 'manual',
+                'created_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            try:
+                supabase.table('attendance_records').insert(record_data).execute()
+                new_records += 1
+                logger.info(f"✅ Motion session start attendance recorded for {student_id}")
+            except Exception as e:
+                logger.error(f"❌ Error saving motion session start record for {student_id}: {e}")
+        
+        processing_time = time.time() - start_time
+        
+        # Update capture log
+        supabase.table('motion_captures').update({
+            'faces_detected': len(detected_faces),
+            'faces_recognized': len([f for f in detected_faces if f['verified']]),
+            'new_records': new_records,
+            'processing_time_ms': int(processing_time * 1000),
+            'processing_status': 'completed'
+        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        
+        logger.info(f"🎯 Motion session start processing complete: {new_records} students recorded in {processing_time:.2f}s")
+        
+    except Exception as e:
+        logger.error(f"❌ Error processing motion session start: {e}")
+        
+        # Update status to failed
         try:
             supabase.table('motion_captures').update({
                 'processing_status': 'failed',
@@ -3141,7 +3716,7 @@ async def process_motion_triggered_background(item: Dict):
             pass
 
 async def process_manual_teacher_motion_capture(item: Dict):
-    """Process manual teacher capture in motion detection session"""
+    """Process manual teacher capture in motion detection session - FIXED VERSION"""
     try:
         start_time = time.time()
         session_id = item['session_id']
@@ -3201,12 +3776,21 @@ async def process_manual_teacher_motion_capture(item: Dict):
                 if existing_record.data:
                     continue  # Skip if already recorded
             
-            # Determine status based on timing
-            capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
-            session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
-            on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
+            # ===== FIX: Handle timezone-aware datetime comparison =====
+            from datetime import timezone
             
-            status = 'present' if capture_dt <= on_time_limit else 'late'
+            try:
+                capture_dt = parse_datetime_with_timezone(item['capture_time'])
+                session_start = parse_datetime_with_timezone(session_data['start_time'])
+                
+                # Calculate on-time limit with timezone-aware datetime
+                on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
+                
+                # Now we can safely compare timezone-aware datetimes
+                status = 'present' if capture_dt <= on_time_limit else 'late'
+            except Exception as e:
+                logger.error(f"Datetime comparison error: {e}")
+                status = 'present'  # Default to present for manual teacher captures
             
             # Record manual teacher attendance
             record_data = {
@@ -3222,7 +3806,7 @@ async def process_manual_teacher_motion_capture(item: Dict):
                 'motion_strength': item['motion_strength'],
                 'trigger_type': 'manual',
                 'force_capture': item.get('force_capture', False),
-                'created_at': datetime.now().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat()
             }
             
             try:
