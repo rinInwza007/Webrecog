@@ -1614,108 +1614,6 @@ def get_face_embedding_cached(student_id: str) -> Optional[np.ndarray]:
 
     return None
 
-def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
-    """Process faces with motion-specific optimizations"""
-    try:
-        start_time = time.time()
-        
-        if image_array is None or image_array.size == 0:
-            logger.warning("Empty image array for motion processing")
-            return []
-        
-        if not enrolled_students:
-            logger.warning("No enrolled students for motion processing")
-            return []
-        
-        # Choose model based on motion strength and config
-        if motion_strength > 0.3 and config.get('motion_boost', False):
-            model_type = "cnn"  # Use high-accuracy model for strong motion
-            num_jitters = 2
-        else:
-            model_type = "cnn" if config['model_accuracy'] == 'high' else "hog"
-            num_jitters = 2 if config['model_accuracy'] == 'high' else 1
-        
-        # Detect faces
-        face_locations = face_recognition.face_locations(image_array, model=model_type)
-        
-        if not face_locations:
-            logger.info("No faces detected in motion-triggered processing")
-            return []
-        
-        logger.info(f"🎯 Motion processing: detected {len(face_locations)} faces (motion: {motion_strength:.3f}, model: {model_type})")
-        
-        # Get face encodings
-        face_encodings = face_recognition.face_encodings(
-            image_array, 
-            face_locations, 
-            num_jitters=num_jitters
-        )
-        
-        detected_faces = []
-        threshold = config['face_threshold']
-        
-        # Adjust threshold for motion events
-        if motion_strength > 0.4:
-            threshold *= 0.95  # Slightly lower threshold for strong motion events
-        elif motion_strength < 0.15:
-            threshold *= 1.05  # Slightly higher threshold for weak motion
-        
-        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
-            try:
-                best_match = None
-                best_similarity = 0.0
-                
-                # Compare with enrolled students
-                for student_id in enrolled_students:
-                    stored_embedding = get_face_embedding_cached(student_id)
-                    if stored_embedding is None:
-                        continue
-                    
-                    similarity = calculate_enhanced_similarity(stored_embedding, encoding)
-                    
-                    if similarity > threshold and similarity > best_similarity:
-                        best_similarity = similarity
-                        best_match = student_id
-                
-                # Enhanced quality check for motion-triggered captures
-                quality_score = 1.0
-                if config.get('enable_quality_check', False):
-                    quality_info = calculate_motion_face_quality(image_array, location, motion_strength)
-                    quality_score = quality_info['overall_score']
-                
-                face_info = {
-                    'face_index': i,
-                    'student_id': best_match,
-                    'confidence': float(best_similarity),
-                    'verified': best_match is not None and best_similarity > threshold,
-                    'bounding_box': {
-                        'top': int(location[0]),
-                        'right': int(location[1]),
-                        'bottom': int(location[2]),
-                        'left': int(location[3])
-                    },
-                    'quality_score': quality_score,
-                    'motion_strength': motion_strength,
-                    'processing_time': time.time() - start_time,
-                    'threshold_used': threshold,
-                    'model_used': model_type
-                }
-                
-                detected_faces.append(face_info)
-                
-            except Exception as e:
-                logger.error(f"Error processing face {i} in motion mode: {e}")
-                continue
-        
-        processing_time = time.time() - start_time
-        logger.info(f"✅ Motion processing completed: {processing_time:.2f}s, {len(detected_faces)} faces processed")
-        
-        return detected_faces
-        
-    except Exception as e:
-        logger.error(f"Error in motion-triggered face processing: {e}")
-        return []
-
 def calculate_motion_face_quality(image_array: np.ndarray, face_location: tuple, motion_strength: float) -> Dict[str, float]:
     """Calculate face quality with motion considerations"""
     try:
@@ -1940,10 +1838,131 @@ def calculate_enhanced_similarity(embedding1: np.ndarray, embedding2: np.ndarray
     except Exception as e:
         logger.error(f"Error calculating improved similarity: {e}")
         return 0.0
+async def record_attendance_directly_fixed(
+    student_id: str,
+    confidence: float,
+    session_data: Dict,
+    motion_strength: float = 0.5,
+    processing_phase: str = 'motion',
+    quality_score: float = 1.0
+) -> bool:
+    """Fixed version of direct attendance recording"""
+    try:
+        logger.info(f"🎯 DIRECT RECORDING START for student: {student_id}")
+        
+        session_id = session_data['id']
+        logger.info(f"Using session: {session_id}")
+        
+        # Step 1: Get student email
+        logger.info(f"Step 1: Getting student email for {student_id}")
+        try:
+            student_result = supabase.table('users').select('email, full_name').eq('school_id', student_id).execute()
+            
+            if not student_result.data:
+                logger.error(f"❌ No user found for student_id: {student_id}")
+                return False
+            
+            student_email = student_result.data[0]['email']
+            student_name = student_result.data[0].get('full_name', 'Unknown')
+            
+            logger.info(f"✅ Step 1 SUCCESS: Found {student_name} ({student_email})")
+            
+        except Exception as e:
+            logger.error(f"❌ Step 1 FAILED: {e}")
+            return False
+        
+        # Step 2: Check for existing record
+        logger.info(f"Step 2: Checking for existing record")
+        try:
+            existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+            
+            if existing_record.data:
+                logger.warning(f"⚠️ Step 2: Student {student_id} already has attendance record")
+                return False
+            
+            logger.info(f"✅ Step 2 SUCCESS: No duplicate found")
+            
+        except Exception as e:
+            logger.error(f"❌ Step 2 FAILED: {e}")
+            return False
+        
+        # Step 3: Calculate status
+        logger.info(f"Step 3: Calculating status")
+        try:
+            capture_time = datetime.now()
+            session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+            on_time_limit = session_start + timedelta(minutes=session_data.get('on_time_limit_minutes', 30))
+            
+            status = 'present' if capture_time <= on_time_limit else 'late'
+            
+            logger.info(f"✅ Step 3 SUCCESS: Status = {status}")
+            logger.info(f"   Capture time: {capture_time}")
+            logger.info(f"   Session start: {session_start}")
+            logger.info(f"   On-time limit: {on_time_limit}")
+            
+        except Exception as e:
+            logger.error(f"❌ Step 3 FAILED: {e}")
+            status = 'present'  # Default fallback
+        
+        # Step 4: Create record data
+        logger.info(f"Step 4: Creating attendance record")
+        try:
+            record_data = {
+                'session_id': session_id,
+                'student_email': student_email,
+                'student_id': student_id,
+                'check_in_time': capture_time.isoformat(),
+                'status': status,
+                'face_match_score': float(confidence),
+                'detection_method': 'motion_triggered_fixed',
+                'processing_phase': processing_phase,
+                'face_quality': float(quality_score),
+                'motion_strength': float(motion_strength),
+                'trigger_type': 'motion',
+                'created_at': datetime.now().isoformat()
+            }
+            
+            logger.info(f"✅ Step 4 SUCCESS: Record data prepared")
+            logger.info(f"   Record data: {record_data}")
+            
+        except Exception as e:
+            logger.error(f"❌ Step 4 FAILED: {e}")
+            return False
+        
+        # Step 5: Insert record
+        logger.info(f"Step 5: Inserting record into database")
+        try:
+            insert_result = supabase.table('attendance_records').insert(record_data).execute()
+            
+            if insert_result.data and len(insert_result.data) > 0:
+                record_id = insert_result.data[0]['id']
+                logger.info(f"🎉 SUCCESS! Attendance recorded with ID: {record_id}")
+                logger.info(f"   Student: {student_id} ({student_name})")
+                logger.info(f"   Email: {student_email}")
+                logger.info(f"   Status: {status}")
+                logger.info(f"   Confidence: {confidence:.3f}")
+                return True
+            else:
+                logger.error(f"❌ Step 5 FAILED: Insert returned no data")
+                logger.error(f"   Insert result: {insert_result}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Step 5 FAILED: Database insert error: {e}")
+            logger.error(f"   Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"❌ FATAL ERROR in direct recording: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return False
 
-# 2. แทนที่ฟังก์ชัน process_motion_triggered_faces (บรรทัด 267)
-def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
-    """Process faces with improved logging and optimization"""
+
+async def process_motion_triggered_faces_async(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float, session_data: Dict) -> List[Dict]:
+    """Async version of face processing with immediate attendance recording"""
     try:
         start_time = time.time()
         
@@ -1959,7 +1978,7 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
         
         # ปรับขนาดภาพเพื่อเพิ่มความเร็ว
         height, width = image_array.shape[:2]
-        max_dimension = 600  # ลดจาก 800 เป็น 600 เพื่อเร็วขึ้น
+        max_dimension = 600
         
         if max(height, width) > max_dimension:
             scale = max_dimension / max(height, width)
@@ -1969,25 +1988,17 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
             image_array = cv2.resize(image_array, (new_width, new_height))
             logger.info(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
         
-        # ใช้ HOG model เพื่อความเร็ว
-        model_type = "hog"
-        num_jitters = 1
-        
         # Detect faces
-        face_locations = face_recognition.face_locations(image_array, model=model_type)
+        face_locations = face_recognition.face_locations(image_array, model="hog")
         
         if not face_locations:
             logger.info("❌ No faces detected")
             return []
         
-        logger.info(f"👥 Detected {len(face_locations)} faces (model: {model_type})")
+        logger.info(f"👥 Detected {len(face_locations)} faces")
         
         # Get face encodings
-        face_encodings = face_recognition.face_encodings(
-            image_array, 
-            face_locations, 
-            num_jitters=num_jitters
-        )
+        face_encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=1)
         
         if not face_encodings:
             logger.warning("❌ No face encodings generated!")
@@ -2000,9 +2011,9 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
         
         # ปรับ threshold สำหรับ motion events
         if motion_strength > 0.4:
-            threshold *= 0.9  # ลด threshold สำหรับ strong motion
+            threshold *= 0.9
         elif motion_strength < 0.15:
-            threshold *= 1.1  # เพิ่ม threshold สำหรับ weak motion
+            threshold *= 1.1
         
         logger.info(f"🎯 Using threshold: {threshold:.3f} (base: {config['face_threshold']:.3f})")
         
@@ -2024,36 +2035,18 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
                     similarity = calculate_enhanced_similarity(stored_embedding, encoding)
                     all_similarities[student_id] = similarity
                     
-                    logger.debug(f"  {student_id}: {similarity:.3f}")
-                    
                     if similarity > threshold and similarity > best_similarity:
                         best_similarity = similarity
                         best_match = student_id
                 
-                # Log results with more detail
                 logger.info(f"📊 Face {i+1} similarities: {all_similarities}")
-                
-                if best_match:
-                    logger.info(f"✅ Face {i+1} recognized as {best_match} (confidence: {best_similarity:.3f})")
-                else:
-                    max_sim = max(all_similarities.values()) if all_similarities else 0
-                    logger.warning(f"❌ Face {i+1} not recognized. Best: {max_sim:.3f} (need: {threshold:.3f})")
-                
-                # Enhanced quality check for motion-triggered captures
-                quality_score = 0.8  # Default value for speed
-                if config.get('enable_quality_check', False):
-                    try:
-                        quality_info = calculate_motion_face_quality(image_array, location, motion_strength)
-                        quality_score = quality_info['overall_score']
-                    except:
-                        quality_score = 0.7
                 
                 face_info = {
                     'face_index': i,
                     'student_id': best_match,
                     'confidence': float(best_similarity),
                     'verified': best_match is not None and best_similarity > threshold,
-                    'all_similarities': all_similarities,  # เพิ่มข้อมูลนี้สำหรับ debug
+                    'all_similarities': all_similarities,
                     'threshold_used': threshold,
                     'bounding_box': {
                         'top': int(location[0]),
@@ -2061,11 +2054,43 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
                         'bottom': int(location[2]),
                         'left': int(location[3])
                     },
-                    'quality_score': quality_score,
+                    'quality_score': 0.8,
                     'motion_strength': motion_strength,
                     'processing_time': time.time() - start_time,
-                    'model_used': model_type
+                    'model_used': 'hog'
                 }
+                
+                if best_match:
+                    logger.info(f"✅ Face {i+1} recognized as {best_match} (confidence: {best_similarity:.3f})")
+                    
+                    # 🔥 IMMEDIATE ATTENDANCE RECORDING 🔥
+                    logger.info(f"🎯 IMMEDIATELY recording attendance for: {best_match}")
+                    
+                    try:
+                        success = await record_attendance_directly_fixed(
+                            student_id=best_match,
+                            confidence=best_similarity,
+                            motion_strength=motion_strength,
+                            session_data=session_data,
+                            processing_phase=config.get('processing_phase', 'motion'),
+                            quality_score=face_info['quality_score']
+                        )
+                        
+                        if success:
+                            logger.info(f"✅ ATTENDANCE RECORDED SUCCESSFULLY for {best_match}")
+                            face_info['attendance_recorded'] = True
+                        else:
+                            logger.error(f"❌ FAILED to record attendance for {best_match}")
+                            face_info['attendance_recorded'] = False
+                            
+                    except Exception as e:
+                        logger.error(f"❌ EXCEPTION recording attendance for {best_match}: {e}")
+                        face_info['attendance_recorded'] = False
+                        
+                else:
+                    max_sim = max(all_similarities.values()) if all_similarities else 0
+                    logger.warning(f"❌ Face {i+1} not recognized. Best: {max_sim:.3f} (need: {threshold:.3f})")
+                    face_info['attendance_recorded'] = False
                 
                 detected_faces.append(face_info)
                 
@@ -2081,8 +2106,39 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
         return detected_faces
         
     except Exception as e:
-        logger.error(f"❌ Error in motion-triggered face processing: {e}")
+        logger.error(f"❌ Error in async face processing: {e}")
         return []
+
+@app.post("/api/debug/test-direct-recording")
+async def test_direct_recording(
+    student_id: str = Form(...),
+    confidence: float = Form(0.9)
+):
+    """Test direct attendance recording"""
+    try:
+        logger.info(f"🧪 Testing direct recording for: {student_id}")
+        
+        success = await record_attendance_directly(
+            student_id=student_id,
+            confidence=confidence,
+            motion_strength=0.8,
+            processing_phase='test',
+            quality_score=0.9
+        )
+        
+        return {
+            "success": success,
+            "student_id": student_id,
+            "confidence": confidence,
+            "message": "Direct recording successful" if success else "Direct recording failed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Test direct recording error: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/api/debug/face-embeddings/{class_id}")
 async def debug_face_embeddings(class_id: str):
@@ -2907,7 +2963,7 @@ async def manual_motion_capture(
 
 async def process_motion_queue():
     """Background processor for motion-triggered attendance queue"""
-    logger.info("🔄 Starting motion processing queue...")
+    logger.info("🔄 Starting FIXED motion processing queue...")
     
     while True:
         try:
@@ -2920,7 +2976,7 @@ async def process_motion_queue():
             if item['processing_type'] == 'session_start':
                 await process_motion_session_start(item)
             elif item['processing_type'] == 'motion_triggered':
-                await process_motion_triggered_background(item)
+                await process_motion_triggered_background_fixed(item)  # ใช้เวอร์ชันใหม่
             elif item['processing_type'] == 'manual_teacher_capture':
                 await process_manual_teacher_motion_capture(item)
             else:
@@ -3028,7 +3084,7 @@ async def process_motion_session_start(item: Dict):
             pass
 
 async def process_motion_triggered_background(item: Dict):
-    """Process motion-triggered attendance capture"""
+    """Fixed motion processing with detailed attendance recording"""
     try:
         start_time = time.time()
         session_id = item['session_id']
@@ -3040,20 +3096,24 @@ async def process_motion_triggered_background(item: Dict):
         logger.info(f"🚶 Processing motion-triggered capture: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
         
         # Process image
-        image_pil = Image.open(io.BytesIO(item['image_data']))
-        if image_pil.mode != 'RGB':
-            image_pil = image_pil.convert('RGB')
+        try:
+            image_pil = Image.open(io.BytesIO(item['image_data']))
+            if image_pil.mode != 'RGB':
+                image_pil = image_pil.convert('RGB')
+            
+            image_array = np.array(image_pil)
+        except Exception as e:
+            logger.error(f"Error processing image: {e}")
+            return
         
-        image_array = np.array(image_pil)
-        
-        # Get enrolled students (cached)
+        # Get enrolled students
         enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
         
         if not enrolled_students:
             logger.warning(f"No enrolled students for motion capture: {session_id}")
             return
         
-        # Process faces with motion-specific optimizations
+        # Process faces
         detected_faces = process_motion_triggered_faces(
             image_array, 
             enrolled_students, 
@@ -3061,75 +3121,156 @@ async def process_motion_triggered_background(item: Dict):
             motion_strength
         )
         
-        # Record new attendance
+        # 🔥 FIXED: Better attendance recording with detailed logging
         new_records = 0
         for face_info in detected_faces:
             if not face_info['verified']:
+                logger.info(f"❌ Skipping unverified face")
                 continue
             
             student_id = face_info['student_id']
             confidence = face_info['confidence']
             
-            # Get student email
-            student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
-            
-            if not student_result.data:
-                continue
-            
-            student_email = student_result.data['email']
-            
-            # Check if already recorded
-            existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
-            
-            if existing_record.data:
-                continue  # Skip if already recorded
-            
-            # Determine status based on timing
-            capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
-            session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
-            on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
-            
-            status = 'present' if capture_dt <= on_time_limit else 'late'
-            
-            # Record motion-triggered attendance
-            record_data = {
-                'session_id': session_id,
-                'student_email': student_email,
-                'student_id': student_id,
-                'check_in_time': item['capture_time'],
-                'status': status,
-                'face_match_score': confidence,
-                'detection_method': 'motion_triggered',
-                'processing_phase': phase,
-                'face_quality': face_info.get('quality_score', 1.0),
-                'motion_strength': motion_strength,
-                'trigger_type': 'motion',
-                'device_id': item.get('device_id'),
-                'created_at': datetime.now().isoformat()
-            }
+            logger.info(f"🎯 ATTEMPTING to record attendance for student: {student_id}")
             
             try:
-                supabase.table('attendance_records').insert(record_data).execute()
-                new_records += 1
-                logger.info(f"✅ Motion-triggered attendance recorded for {student_id}: {status}")
+                # Step 1: Get student email with detailed validation
+                logger.info(f"Step 1: Finding user for student_id: {student_id}")
+                
+                student_result = supabase.table('users').select('email, full_name, id').eq('school_id', student_id).execute()
+                
+                if not student_result.data or len(student_result.data) == 0:
+                    logger.error(f"❌ CRITICAL: No user found for student_id: {student_id}")
+                    
+                    # Try alternative search by email
+                    email_result = supabase.table('users').select('email, full_name, school_id').eq('email', f"{student_id}@student.edu").execute()
+                    if email_result.data:
+                        logger.info(f"✅ Found by email pattern: {email_result.data[0]}")
+                        student_email = email_result.data[0]['email']
+                        student_id = email_result.data[0]['school_id']  # Update student_id
+                    else:
+                        logger.error(f"❌ No user found by any method for: {student_id}")
+                        continue
+                else:
+                    student_email = student_result.data[0]['email']
+                    student_name = student_result.data[0].get('full_name', 'Unknown')
+                    user_id = student_result.data[0]['id']
+                    logger.info(f"✅ Step 1 SUCCESS: Found {student_name} ({student_email}, user_id: {user_id})")
+                
+                # Step 2: Validate email exists in users table
+                logger.info(f"Step 2: Validating email exists: {student_email}")
+                email_check = supabase.table('users').select('id, email').eq('email', student_email).execute()
+                
+                if not email_check.data:
+                    logger.error(f"❌ CRITICAL: Email {student_email} not found in users table")
+                    continue
+                
+                logger.info(f"✅ Step 2 SUCCESS: Email validated")
+                
+                # Step 3: Check session exists
+                logger.info(f"Step 3: Validating session: {session_id}")
+                session_check = supabase.table('attendance_sessions').select('id, class_id').eq('id', session_id).execute()
+                
+                if not session_check.data:
+                    logger.error(f"❌ CRITICAL: Session {session_id} not found")
+                    continue
+                
+                logger.info(f"✅ Step 3 SUCCESS: Session validated")
+                
+                # Step 4: Check for existing record
+                logger.info(f"Step 4: Checking for duplicate record")
+                existing_record = supabase.table('attendance_records').select('id, created_at').eq('session_id', session_id).eq('student_email', student_email).execute()
+                
+                if existing_record.data:
+                    logger.warning(f"⚠️ Student {student_id} already recorded at {existing_record.data[0]['created_at']}")
+                    continue
+                
+                logger.info(f"✅ Step 4 SUCCESS: No duplicate found")
+                
+                # Step 5: Calculate status
+                logger.info(f"Step 5: Calculating attendance status")
+                try:
+                    capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
+                    session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+                    on_time_limit = session_start + timedelta(minutes=session_data.get('on_time_limit_minutes', 30))
+                    
+                    status = 'present' if capture_dt <= on_time_limit else 'late'
+                    logger.info(f"✅ Step 5 SUCCESS: Status = {status}")
+                
+                except Exception as e:
+                    logger.error(f"❌ Error calculating status: {e}")
+                    status = 'present'  # Default fallback
+                
+                # Step 6: Prepare record data with proper types
+                logger.info(f"Step 6: Preparing record data")
+                record_data = {
+                    'session_id': str(session_id),  # Ensure UUID string
+                    'student_email': str(student_email),
+                    'student_id': str(student_id),
+                    'check_in_time': item['capture_time'],
+                    'status': str(status),
+                    'face_match_score': float(confidence),
+                    'detection_method': 'motion_triggered',
+                    'processing_phase': str(phase),
+                    'face_quality': float(face_info.get('quality_score', 1.0)),
+                    'motion_strength': float(motion_strength),
+                    'trigger_type': 'motion',
+                    'device_id': item.get('device_id'),
+                    'created_at': datetime.now().isoformat()
+                }
+                
+                logger.info(f"✅ Step 6 SUCCESS: Record prepared")
+                logger.info(f"📋 Record data: {record_data}")
+                
+                # Step 7: Insert with detailed error handling
+                logger.info(f"Step 7: Inserting record into database")
+                
+                insert_result = supabase.table('attendance_records').insert(record_data).execute()
+                
+                if insert_result.data and len(insert_result.data) > 0:
+                    record_id = insert_result.data[0]['id']
+                    new_records += 1
+                    logger.info(f"🎉 ATTENDANCE SUCCESSFULLY RECORDED!")
+                    logger.info(f"   Record ID: {record_id}")
+                    logger.info(f"   Student: {student_id}")
+                    logger.info(f"   Email: {student_email}")
+                    logger.info(f"   Status: {status}")
+                    logger.info(f"   Confidence: {confidence:.3f}")
+                else:
+                    logger.error(f"❌ FAILED: Insert returned no data")
+                    logger.error(f"   Insert result: {insert_result}")
+                
             except Exception as e:
-                logger.error(f"❌ Error saving motion record for {student_id}: {e}")
+                logger.error(f"❌ EXCEPTION while recording attendance for {student_id}: {e}")
+                logger.error(f"   Exception type: {type(e).__name__}")
+                import traceback
+                logger.error(f"   Traceback: {traceback.format_exc()}")
+                continue
         
         processing_time = time.time() - start_time
         
         # Update capture log
-        supabase.table('motion_captures').update({
-            'faces_detected': len(detected_faces),
-            'faces_recognized': len([f for f in detected_faces if f['verified']]),
-            'new_records': new_records,
-            'processing_time_ms': int(processing_time * 1000),
-            'processing_status': 'completed'
-        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        try:
+            supabase.table('motion_captures').update({
+                'faces_detected': len(detected_faces),
+                'faces_recognized': len([f for f in detected_faces if f['verified']]),
+                'new_records': new_records,
+                'processing_time_ms': int(processing_time * 1000),
+                'processing_status': 'completed',
+                'detailed_log': f'Verified faces: {len([f for f in detected_faces if f["verified"]])}, New records: {new_records}'
+            }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        except Exception as e:
+            logger.error(f"Error updating capture log: {e}")
         
-        logger.info(f"🤖 Motion capture complete: {new_records} new records in {processing_time:.2f}s")
+        if new_records > 0:
+            logger.info(f"🎉 MOTION CAPTURE SUCCESS: {new_records} new attendance records in {processing_time:.2f}s")
+        else:
+            logger.warning(f"⚠️ Motion capture completed but NO RECORDS SAVED in {processing_time:.2f}s")
         
     except Exception as e:
-        logger.error(f"❌ Error processing motion capture: {e}")
+        logger.error(f"❌ FATAL ERROR in motion processing: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         
         # Update status to failed
         try:
@@ -3585,9 +3726,138 @@ async def get_motion_session_statistics_internal(session_id: str) -> Dict:
         logger.error(f"Error generating motion session statistics: {e}")
         return {"error": str(e)}
 
-# ==================== System Health and Monitoring ====================
-async def process_motion_triggered_background_optimized(item: Dict):
-    """Optimized motion processing - ใช้แทน process_motion_triggered_background"""
+@app.get("/api/debug/enrolled-students/{class_id}")
+async def debug_enrolled_students(class_id: str):
+    """Debug enrolled students for a class"""
+    try:
+        logger.info(f"🔍 Debugging enrolled students for class: {class_id}")
+        
+        # Method 1: Check class_students table
+        method1_result = {}
+        try:
+            class_students_result = supabase.table('class_students').select('*').eq('class_id', class_id).execute()
+            method1_result = {
+                'table_exists': True,
+                'count': len(class_students_result.data or []),
+                'data': class_students_result.data
+            }
+        except Exception as e:
+            method1_result = {
+                'table_exists': False,
+                'error': str(e)
+            }
+        
+        # Method 2: Check users with face embeddings
+        try:
+            embeddings_result = supabase.table('student_face_embeddings').select('student_id').eq('is_active', True).execute()
+            method2_result = {
+                'count': len(embeddings_result.data or []),
+                'student_ids': [r['student_id'] for r in embeddings_result.data or []]
+            }
+        except Exception as e:
+            method2_result = {'error': str(e)}
+        
+        # Method 3: Get actual enrolled students
+        enrolled_students = await get_enrolled_students_for_class(class_id)
+        
+        return {
+            "success": True,
+            "class_id": class_id,
+            "method1_class_students": method1_result,
+            "method2_face_embeddings": method2_result,
+            "final_enrolled_students": {
+                'count': len(enrolled_students),
+                'student_ids': enrolled_students
+            },
+            "debug_info": {
+                "env_manual_students": os.getenv("MANUAL_STUDENTS_FOR_CLASS", "").split(","),
+                "debug_mode": os.getenv("DEBUG", "false").lower() == "true"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug enrolled students error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "class_id": class_id
+        }
+@app.post("/api/debug/test-attendance-recording")
+async def test_attendance_recording(
+    session_id: str = Form(...),
+    student_id: str = Form(...),
+    confidence: float = Form(0.8)
+):
+    """Test attendance recording process"""
+    try:
+        logger.info(f"🧪 Testing attendance recording: session={session_id}, student={student_id}")
+        
+        # Step 1: Check session exists
+        session_result = supabase.table('attendance_sessions').select('*').eq('id', session_id).execute()
+        if not session_result.data:
+            return {"success": False, "error": "Session not found", "step": "session_check"}
+        
+        session_data = session_result.data[0]
+        
+        # Step 2: Check student exists in users table
+        student_result = supabase.table('users').select('*').eq('school_id', student_id).execute()
+        if not student_result.data:
+            return {"success": False, "error": "Student not found in users table", "step": "student_check"}
+        
+        student_email = student_result.data[0]['email']
+        
+        # Step 3: Check if already recorded
+        existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+        if existing_record.data:
+            return {"success": False, "error": "Already recorded", "step": "duplicate_check", "existing_record": existing_record.data[0]}
+        
+        # Step 4: Calculate status
+        capture_dt = datetime.now()
+        session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+        on_time_limit = session_start + timedelta(minutes=session_data.get('on_time_limit_minutes', 30))
+        
+        status = 'present' if capture_dt <= on_time_limit else 'late'
+        
+        # Step 5: Create record
+        record_data = {
+            'session_id': session_id,
+            'student_email': student_email,
+            'student_id': student_id,
+            'check_in_time': capture_dt.isoformat(),
+            'status': status,
+            'face_match_score': confidence,
+            'detection_method': 'debug_test',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Step 6: Insert record
+        insert_result = supabase.table('attendance_records').insert(record_data).execute()
+        
+        return {
+            "success": True,
+            "message": "Attendance recorded successfully",
+            "steps_completed": [
+                "session_check",
+                "student_check", 
+                "duplicate_check",
+                "status_calculation",
+                "record_creation",
+                "database_insert"
+            ],
+            "record_data": record_data,
+            "insert_result": len(insert_result.data) > 0,
+            "record_id": insert_result.data[0]['id'] if insert_result.data else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Test attendance recording error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "step": "exception"
+        }
+async def process_motion_triggered_background_fixed(item: Dict):
+    """Fixed background processing with async face recognition"""
     try:
         start_time = time.time()
         session_id = item['session_id']
@@ -3596,125 +3866,450 @@ async def process_motion_triggered_background_optimized(item: Dict):
         phase = item['phase']
         motion_strength = item['motion_strength']
         
-        logger.info(f"🚶 Processing motion-triggered capture: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
+        logger.info(f"🚶 FIXED: Processing motion-triggered capture: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
         
-        # Process image (ปรับปรุงการโหลดภาพ)
+        # Process image
         try:
             image_pil = Image.open(io.BytesIO(item['image_data']))
             if image_pil.mode != 'RGB':
                 image_pil = image_pil.convert('RGB')
             
             image_array = np.array(image_pil)
+            logger.info(f"✅ Image processed: {image_array.shape}")
         except Exception as e:
-            logger.error(f"Error processing image: {e}")
+            logger.error(f"❌ Error processing image: {e}")
             return
         
-        # Get enrolled students (cached)
+        # Get enrolled students
         enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
+        logger.info(f"📋 Enrolled students: {len(enrolled_students)} - {enrolled_students}")
         
         if not enrolled_students:
-            logger.warning(f"No enrolled students for motion capture: {session_id}")
-            # อัพเดท capture log ด้วยสถานะ no_students
-            try:
-                supabase.table('motion_captures').update({
-                    'processing_status': 'no_students',
-                    'error_message': 'No enrolled students found'
-                }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
-            except:
-                pass
+            logger.warning(f"❌ No enrolled students for motion capture: {session_id}")
             return
         
-        # Process faces with optimized function
-        detected_faces = process_motion_triggered_faces_optimized(
+        # Use async face processing
+        detected_faces = await process_motion_triggered_faces_async(
             image_array, 
             enrolled_students, 
             config, 
-            motion_strength
+            motion_strength,
+            session_data  # Pass session_data
         )
         
-        # Record new attendance (เหมือนเดิม)
-        new_records = 0
-        for face_info in detected_faces:
-            if not face_info['verified']:
-                continue
+        processing_time = time.time() - start_time
+        new_records = len([f for f in detected_faces if f.get('attendance_recorded', False)])
+        
+        # Update capture log
+        try:
+            supabase.table('motion_captures').update({
+                'faces_detected': len(detected_faces),
+                'faces_recognized': len([f for f in detected_faces if f['verified']]),
+                'new_records': new_records,
+                'processing_time_ms': int(processing_time * 1000),
+                'processing_status': 'completed',
+                'optimization_version': 'v3_async_fixed'
+            }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        except Exception as e:
+            logger.error(f"❌ Error updating capture log: {e}")
+        
+        if new_records > 0:
+            logger.info(f"🎉 ASYNC FIXED Motion capture SUCCESS: {new_records} new attendance records in {processing_time:.2f}s")
+        else:
+            logger.warning(f"⚠️ Motion capture completed but NO RECORDS SAVED in {processing_time:.2f}s")
+        
+    except Exception as e:
+        logger.error(f"❌ FATAL ERROR in async fixed motion processing: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+
+@app.post("/api/debug/simple-attendance-test")
+async def simple_attendance_test(
+    student_id: str = Form(...),
+    session_id: str = Form(...)
+):
+    """Simple test for attendance recording"""
+    try:
+        logger.info(f"🧪 Simple attendance test: student={student_id}, session={session_id}")
+        
+        # Get session data
+        session_result = supabase.table('attendance_sessions').select('*').eq('id', session_id).execute()
+        if not session_result.data:
+            return {"success": False, "error": "Session not found"}
+        
+        session_data = session_result.data[0]
+        
+        # Get student email
+        student_result = supabase.table('users').select('email, full_name').eq('school_id', student_id).execute()
+        if not student_result.data:
+            return {"success": False, "error": "Student not found"}
+        
+        student_email = student_result.data[0]['email']
+        student_name = student_result.data[0]['full_name']
+        
+        # Check for existing record
+        existing = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+        if existing.data:
+            return {"success": False, "error": "Already recorded", "record_id": existing.data[0]['id']}
+        
+        # Create simple record
+        record_data = {
+            'session_id': session_id,
+            'student_email': student_email,
+            'student_id': student_id,
+            'check_in_time': datetime.now().isoformat(),
+            'status': 'present',
+            'face_match_score': 0.95,
+            'detection_method': 'simple_test',
+            'trigger_type': 'manual',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Insert
+        result = supabase.table('attendance_records').insert(record_data).execute()
+        
+        if result.data:
+            return {
+                "success": True,
+                "message": "Simple attendance test successful",
+                "record_id": result.data[0]['id'],
+                "student_name": student_name,
+                "student_email": student_email
+            }
+        else:
+            return {"success": False, "error": "Insert failed", "result": str(result)}
             
-            student_id = face_info['student_id']
-            confidence = face_info['confidence']
-            
-            # Get student email
+    except Exception as e:
+        logger.error(f"Simple attendance test error: {e}")
+        return {"success": False, "error": str(e)}
+    
+def process_motion_triggered_faces_with_debug(image_array: np.ndarray, enrolled_students: List[str], config: Dict, motion_strength: float) -> List[Dict]:
+    """Face processing with detailed debugging"""
+    try:
+        start_time = time.time()
+        
+        logger.info(f"🔍 FACE DEBUG: Processing {len(enrolled_students)} enrolled students")
+        logger.info(f"🔍 FACE DEBUG: Image shape: {image_array.shape}")
+        logger.info(f"🔍 FACE DEBUG: Config: {config}")
+        
+        # Resize image for faster processing
+        height, width = image_array.shape[:2]
+        max_dimension = 600
+        
+        if max(height, width) > max_dimension:
+            scale = max_dimension / max(height, width)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            image_array = cv2.resize(image_array, (new_width, new_height))
+            logger.info(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
+        
+        # Detect faces
+        face_locations = face_recognition.face_locations(image_array, model="hog")
+        logger.info(f"👥 Detected {len(face_locations)} faces")
+        
+        if not face_locations:
+            logger.warning("❌ No faces detected")
+            return []
+        
+        # Get face encodings
+        face_encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=1)
+        logger.info(f"🔢 Generated {len(face_encodings)} face encodings")
+        
+        if not face_encodings:
+            logger.warning("❌ No face encodings generated")
+            return []
+        
+        detected_faces = []
+        threshold = config.get('face_threshold', 0.6)
+        
+        logger.info(f"🎯 Using threshold: {threshold}")
+        
+        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
             try:
-                student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
+                logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
                 
-                if not student_result.data:
-                    logger.warning(f"No user found for student_id: {student_id}")
-                    continue
+                best_match = None
+                best_similarity = 0.0
+                all_similarities = {}
                 
-                student_email = student_result.data['email']
+                # Compare with each enrolled student
+                for student_id in enrolled_students:
+                    stored_embedding = get_face_embedding_cached(student_id)
+                    if stored_embedding is None:
+                        logger.debug(f"❌ No embedding for {student_id}")
+                        continue
+                    
+                    similarity = calculate_enhanced_similarity(stored_embedding, encoding)
+                    all_similarities[student_id] = similarity
+                    
+                    logger.debug(f"  {student_id}: {similarity:.3f}")
+                    
+                    if similarity > threshold and similarity > best_similarity:
+                        best_similarity = similarity
+                        best_match = student_id
                 
-                # Check if already recorded
-                existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
+                # Log detailed results
+                logger.info(f"📊 Face {i+1} similarities: {all_similarities}")
                 
-                if existing_record.data:
-                    logger.info(f"Student {student_id} already recorded, skipping")
-                    continue
+                if best_match:
+                    logger.info(f"✅ Face {i+1} RECOGNIZED as {best_match} (confidence: {best_similarity:.3f})")
+                else:
+                    max_sim = max(all_similarities.values()) if all_similarities else 0
+                    logger.warning(f"❌ Face {i+1} NOT RECOGNIZED. Best: {max_sim:.3f} (need: {threshold:.3f})")
                 
-                # Determine status based on timing
-                capture_dt = datetime.fromisoformat(item['capture_time'].replace('Z', '+00:00'))
-                session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
-                on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
-                
-                status = 'present' if capture_dt <= on_time_limit else 'late'
-                
-                # Record motion-triggered attendance
-                record_data = {
-                    'session_id': session_id,
-                    'student_email': student_email,
-                    'student_id': student_id,
-                    'check_in_time': item['capture_time'],
-                    'status': status,
-                    'face_match_score': confidence,
-                    'detection_method': 'motion_triggered_optimized',
-                    'processing_phase': phase,
-                    'face_quality': face_info.get('quality_score', 1.0),
+                face_info = {
+                    'face_index': i,
+                    'student_id': best_match,
+                    'confidence': float(best_similarity),
+                    'verified': best_match is not None and best_similarity > threshold,
+                    'all_similarities': all_similarities,
+                    'threshold_used': threshold,
+                    'bounding_box': {
+                        'top': int(location[0]),
+                        'right': int(location[1]),
+                        'bottom': int(location[2]),
+                        'left': int(location[3])
+                    },
+                    'quality_score': 0.8,  # Default
                     'motion_strength': motion_strength,
-                    'trigger_type': 'motion',
-                    'device_id': item.get('device_id'),
-                    'created_at': datetime.now().isoformat()
+                    'processing_time': time.time() - start_time,
+                    'model_used': 'hog'
                 }
                 
-                supabase.table('attendance_records').insert(record_data).execute()
-                new_records += 1
-                logger.info(f"✅ Motion-triggered attendance recorded for {student_id}: {status}")
+                detected_faces.append(face_info)
                 
             except Exception as e:
-                logger.error(f"❌ Error saving motion record for {student_id}: {e}")
+                logger.error(f"❌ Error processing face {i}: {e}")
                 continue
         
         processing_time = time.time() - start_time
+        verified_count = len([f for f in detected_faces if f['verified']])
         
-        # Update capture log
-        supabase.table('motion_captures').update({
-            'faces_detected': len(detected_faces),
-            'faces_recognized': len([f for f in detected_faces if f['verified']]),
-            'new_records': new_records,
-            'processing_time_ms': int(processing_time * 1000),
-            'processing_status': 'completed',
-            'optimization_version': 'v2_fast'
-        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
+        logger.info(f"✅ FACE DEBUG COMPLETE: {len(face_locations)} detected → {len(face_encodings)} encoded → {verified_count} recognized in {processing_time:.2f}s")
         
-        logger.info(f"🤖 OPTIMIZED Motion capture complete: {new_records} new records in {processing_time:.2f}s")
+        return detected_faces
         
     except Exception as e:
-        logger.error(f"❌ Error processing optimized motion capture: {e}")
+        logger.error(f"❌ Error in face processing with debug: {e}")
+        return []
+
+async def get_enrolled_students_for_class_fixed(class_id: str) -> List[str]:
+    """Fixed version with better error handling and more methods"""
+    try:
+        logger.info(f"🔍 FIXED: Getting enrolled students for class: {class_id}")
         
-        # Update status to failed
+        # Method 1: Try class_students table
         try:
-            supabase.table('motion_captures').update({
-                'processing_status': 'failed',
-                'error_message': str(e)
-            }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
-        except:
-            pass
+            logger.info("Method 1: Checking class_students table")
+            class_students_result = supabase.table('class_students').select('user_id').eq('class_id', class_id).execute()
+            
+            if class_students_result.data:
+                user_ids = [record['user_id'] for record in class_students_result.data]
+                logger.info(f"Found {len(user_ids)} user_ids in class_students")
+                
+                student_ids = []
+                for user_id in user_ids:
+                    try:
+                        user_result = supabase.table('users').select('school_id').eq('id', user_id).single().execute()
+                        if user_result.data and user_result.data.get('school_id'):
+                            student_ids.append(user_result.data['school_id'])
+                            logger.info(f"  Mapped user_id {user_id} -> school_id {user_result.data['school_id']}")
+                    except Exception as e:
+                        logger.warning(f"Could not map user_id {user_id}: {e}")
+                        continue
+                
+                if student_ids:
+                    logger.info(f"✅ Method 1 success: {len(student_ids)} students - {student_ids}")
+                    return student_ids
+        
+        except Exception as e:
+            logger.warning(f"Method 1 failed: {e}")
+        
+        # Method 2: Check attendance_records for this class
+        try:
+            logger.info("Method 2: Checking attendance_records")
+            sessions_result = supabase.table('attendance_sessions').select('id').eq('class_id', class_id).execute()
+            
+            if sessions_result.data:
+                session_ids = [s['id'] for s in sessions_result.data]
+                logger.info(f"Found {len(session_ids)} sessions for class")
+                
+                records_result = supabase.table('attendance_records').select('student_id').in_('session_id', session_ids).execute()
+                
+                if records_result.data:
+                    student_ids = list(set([r['student_id'] for r in records_result.data if r['student_id']]))
+                    logger.info(f"✅ Method 2 success: {len(student_ids)} students from attendance records - {student_ids}")
+                    return student_ids
+        
+        except Exception as e:
+            logger.warning(f"Method 2 failed: {e}")
+        
+        # Method 3: Manual override from environment
+        manual_students = os.getenv("MANUAL_STUDENTS_FOR_CLASS", "").split(",")
+        manual_students = [s.strip() for s in manual_students if s.strip()]
+        
+        if manual_students:
+            logger.info(f"✅ Method 3 (manual): Using manual student list - {manual_students}")
+            return manual_students
+        
+        # Method 4: If debug mode, return all students with face embeddings
+        if os.getenv("DEBUG", "false").lower() == "true":
+            try:
+                logger.info("Method 4: DEBUG mode - using all students with face embeddings")
+                embeddings_result = supabase.table('student_face_embeddings').select('student_id').eq('is_active', True).execute()
+                
+                if embeddings_result.data:
+                    student_ids = list(set([r['student_id'] for r in embeddings_result.data]))
+                    logger.info(f"✅ Method 4 (DEBUG): {len(student_ids)} students with face embeddings - {student_ids}")
+                    return student_ids
+            except Exception as e:
+                logger.error(f"Method 4 failed: {e}")
+        
+        logger.warning(f"❌ No enrolled students found for class {class_id}")
+        return []
+        
+    except Exception as e:
+        logger.error(f"❌ Error in get_enrolled_students_for_class_fixed: {e}")
+        return []
+# ==================== System Health and Monitoring ====================
+@app.get("/api/debug/database-constraints")
+async def debug_database_constraints():
+    """Debug database constraints and relationships"""
+    try:
+        # Test 1: Check users table
+        users_sample = supabase.table('users').select('id, email, school_id, full_name').limit(3).execute()
+        
+        # Test 2: Check attendance_sessions table
+        sessions_sample = supabase.table('attendance_sessions').select('id, class_id, teacher_email, status').limit(3).execute()
+        
+        # Test 3: Check attendance_records table
+        records_sample = supabase.table('attendance_records').select('id, session_id, student_email, student_id, status').limit(3).execute()
+        
+        # Test 4: Try to find foreign key violations
+        orphaned_records = []
+        if records_sample.data:
+            for record in records_sample.data:
+                # Check if student_email exists in users
+                user_exists = supabase.table('users').select('email').eq('email', record['student_email']).execute()
+                if not user_exists.data:
+                    orphaned_records.append({
+                        'record_id': record['id'],
+                        'student_email': record['student_email'],
+                        'issue': 'student_email not found in users table'
+                    })
+                
+                # Check if session_id exists
+                session_exists = supabase.table('attendance_sessions').select('id').eq('id', record['session_id']).execute()
+                if not session_exists.data:
+                    orphaned_records.append({
+                        'record_id': record['id'],
+                        'session_id': record['session_id'],
+                        'issue': 'session_id not found in attendance_sessions table'
+                    })
+        
+        return {
+            "success": True,
+            "timestamp": datetime.now().isoformat(),
+            "table_samples": {
+                "users": {
+                    "count": len(users_sample.data or []),
+                    "sample": users_sample.data[:2] if users_sample.data else []
+                },
+                "attendance_sessions": {
+                    "count": len(sessions_sample.data or []),
+                    "sample": sessions_sample.data[:2] if sessions_sample.data else []
+                },
+                "attendance_records": {
+                    "count": len(records_sample.data or []),
+                    "sample": records_sample.data[:2] if records_sample.data else []
+                }
+            },
+            "foreign_key_violations": orphaned_records,
+            "recommendations": [
+                "Check if all student emails exist in users table before inserting",
+                "Validate session_id exists before creating attendance records",
+                "Use proper UUID format for foreign keys",
+                "Check constraint violations in PostgreSQL logs"
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error debugging database constraints: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+# เพิ่ม endpoint สำหรับ manual test insert
+@app.post("/api/debug/manual-insert-test")
+async def manual_insert_test(
+    session_id: str = Form(...),
+    student_email: str = Form(...),
+    student_id: str = Form(...)
+):
+    """Manually test inserting attendance record"""
+    try:
+        logger.info(f"🧪 Manual insert test: session={session_id}, email={student_email}, student_id={student_id}")
+        
+        # Step 1: Validate inputs exist
+        user_check = supabase.table('users').select('id, email, school_id').eq('email', student_email).execute()
+        if not user_check.data:
+            return {"success": False, "error": f"User with email {student_email} not found"}
+        
+        session_check = supabase.table('attendance_sessions').select('id, start_time, on_time_limit_minutes').eq('id', session_id).execute()
+        if not session_check.data:
+            return {"success": False, "error": f"Session {session_id} not found"}
+        
+        session_data = session_check.data[0]
+        
+        # Step 2: Calculate status
+        capture_time = datetime.now()
+        session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
+        on_time_limit = session_start + timedelta(minutes=session_data.get('on_time_limit_minutes', 30))
+        status = 'present' if capture_time <= on_time_limit else 'late'
+        
+        # Step 3: Create test record
+        record_data = {
+            'session_id': session_id,
+            'student_email': student_email,
+            'student_id': student_id,
+            'check_in_time': capture_time.isoformat(),
+            'status': status,
+            'face_match_score': 0.95,
+            'detection_method': 'manual_test',
+            'processing_phase': 'test',
+            'face_quality': 1.0,
+            'motion_strength': 0.5,
+            'trigger_type': 'manual',
+            'created_at': datetime.now().isoformat()
+        }
+        
+        # Step 4: Insert
+        result = supabase.table('attendance_records').insert(record_data).execute()
+        
+        if result.data:
+            return {
+                "success": True,
+                "message": "Manual insert successful",
+                "record_id": result.data[0]['id'],
+                "record_data": record_data
+            }
+        else:
+            return {
+                "success": False,
+                "error": "Insert returned no data",
+                "result": result
+            }
+            
+    except Exception as e:
+        logger.error(f"Manual insert test error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "type": type(e).__name__
+        }
 @app.get("/health")
 async def motion_system_health():
     """Enhanced health check for motion detection system"""
