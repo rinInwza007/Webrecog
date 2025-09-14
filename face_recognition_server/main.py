@@ -8,7 +8,6 @@ from pydantic import BaseModel
 import os
 import io
 import cv2
-import faiss
 import jwt
 import time
 import json
@@ -40,7 +39,7 @@ from logging.handlers import RotatingFileHandler
 
 # ✅ โหลด environment variables (.env) แบบ UTF-8
 load_dotenv(encoding="utf-8")
-
+faiss = None
 #mediapipe tool #
 mp_face_detection = mp.solutions.face_detection
 
@@ -2788,7 +2787,11 @@ def process_motion_triggered_faces(image_array: np.ndarray, enrolled_students: L
     except Exception as e:
         logger.error(f"❌ Error in motion-triggered face processing: {e}")
         return []
-
+def vector_search(query_vec: np.ndarray, topk: int = 5):
+    """
+    Unified vector search: ใช้ pgvector เสมอ
+    """
+    return pgvector_query("student_face_embeddings", query_vec, topk)
 @app.get("/api/debug/face-embeddings/{class_id}")
 async def debug_face_embeddings(class_id: str):
     """Debug face embeddings for a class"""
@@ -3698,39 +3701,36 @@ async def register_face(
     if not live["liveness"]:
         raise HTTPException(status_code=400, detail="Liveness failed")
 
-    # 2) สร้าง embedding ใบหน้าแรกที่เจอ
+    # 2) สร้าง embedding
     locs = face_recognition.face_locations(arr, model="hog")
     if not locs:
         raise HTTPException(status_code=400, detail="No face detected")
     encs = face_recognition.face_encodings(arr, locs, num_jitters=1)
-    emb = normalize_embedding(encs[0]).astype('float32')
+    emb = normalize_embedding(encs[0]).astype("float32")
 
-    # 3) เช็คแมสก์ เพื่อเลือก bank
+    # 3) เช็คแมสก์ → เลือกตาราง
     roi = arr[locs[0][0]:locs[0][2], locs[0][3]:locs[0][1]]
     m = predict_mask(roi)
-    table = 'student_face_embeddings_masked' if m["masked"] else 'student_face_embeddings_unmasked'
+    table = "student_face_embeddings_masked" if m["masked"] else "student_face_embeddings_unmasked"
 
-    # 4) เซฟ DB (JSON + vector ถ้ามี pgvector)
+    # 4) เซฟลง DB (pgvector)
     data = {
         "student_id": student_id,
         "face_embedding_json": json.dumps(emb.tolist()),
         "is_active": True,
-        "created_at": datetime.now().isoformat()
+        "created_at": datetime.now().isoformat(),
+        "face_vec": emb.tolist(),   # ✅ ใช้ pgvector column
     }
-    if os.getenv("USE_PGVECTOR", "true").lower() == "true":
-        data["face_vec"] = emb.tolist()  # PostgREST + pgvector
+
     supabase.table(table).update({"is_active": False}).eq("student_id", student_id).execute()
     supabase.table(table).insert(data).execute()
 
-    # 5) อัปเดต FAISS index ในหน่วยความจำ (ถ้าเปิดใช้)
-    if USE_FAISS:
-        # รีบิวด์ง่าย ๆ (งานจริงแนะนำลงคิว)
-        if m["masked"]:
-            _faiss_indexes["masked"] = None
-        else:
-            _faiss_indexes["unmasked"] = None
-
-    return {"ok": True, "student_id": student_id, "masked": m["masked"], "liveness_conf": live["confidence"]}
+    return {
+        "ok": True,
+        "student_id": student_id,
+        "masked": m["masked"],
+        "liveness_conf": live["confidence"],
+    }
 
 
 @app.post("/api/verify-face")
@@ -3988,158 +3988,112 @@ async def process_motion_triggered_background(item: Dict):
             pass
 
 async def process_manual_teacher_motion_capture(item: Dict):
-    """Process manual teacher capture in motion detection session - FIXED VERSION"""
     try:
         start_time = time.time()
-        session_id = item['session_id']
-        session_data = item['session_data']
-        config = item['config']
-        phase = item['phase']
-        
-        logger.info(f"👨‍🏫 Processing manual teacher capture in motion session: {session_id} (phase: {phase})")
-        
-        # Process image with high priority settings
-        image_pil = Image.open(io.BytesIO(item['image_data']))
-        if image_pil.mode != 'RGB':
-            image_pil = image_pil.convert('RGB')
-        
+        session_id = item["session_id"]
+        session_data = item["session_data"]
+        config = item["config"]
+        phase = item["phase"]
+
+        logger.info(f"👨‍🏫 Processing manual teacher capture: {session_id} (phase: {phase})")
+
+        # Load image
+        image_pil = Image.open(io.BytesIO(item["image_data"]))
+        if image_pil.mode != "RGB":
+            image_pil = image_pil.convert("RGB")
         image_array = np.array(image_pil)
-        
-        # Get enrolled students
-        enrolled_students = await get_enrolled_students_for_class(session_data['class_id'])
-        
+
+        # Enrolled students
+        enrolled_students = await get_enrolled_students_for_class(session_data["class_id"])
         if not enrolled_students:
-            logger.warning(f"No enrolled students for manual motion capture: {session_id}")
+            logger.warning(f"No enrolled students for manual capture: {session_id}")
             return
-        
-        # Use high accuracy for manual teacher captures
+
         manual_config = config.copy()
-        manual_config['model_accuracy'] = 'high'
-        manual_config['enable_quality_check'] = True
-        
+        manual_config["model_accuracy"] = "high"
+        manual_config["enable_quality_check"] = True
+
+        # Detect faces
         detected_faces = process_motion_triggered_faces(
-            image_array, 
-            enrolled_students, 
-            manual_config, 
-            item['motion_strength']
+            image_array,
+            enrolled_students,
+            manual_config,
+            item["motion_strength"],
         )
-        
-        # Record new attendance
+
         new_records = 0
         for face_info in detected_faces:
-            if not face_info['verified']:
+            if not face_info["verified"]:
                 continue
-            
-            student_id = face_info['student_id']
-            confidence = face_info['confidence']
-            
-            # Get student email
-            student_result = supabase.table('users').select('email').eq('school_id', student_id).single().execute()
-            
+
+            student_id = face_info["student_id"]
+            confidence = face_info["confidence"]
+
+            # Student email
+            student_result = supabase.table("users").select("email").eq("school_id", student_id).single().execute()
             if not student_result.data:
                 continue
-            
-            student_email = student_result.data['email']
-            
-            # Check if already recorded (skip for forced captures)
-            if not item.get('force_capture', False):
-                existing_record = supabase.table('attendance_records').select('id').eq('session_id', session_id).eq('student_email', student_email).execute()
-                
+            student_email = student_result.data["email"]
+
+            # Skip if already recorded (unless forced)
+            if not item.get("force_capture", False):
+                existing_record = supabase.table("attendance_records").select("id").eq("session_id", session_id).eq("student_email", student_email).execute()
                 if existing_record.data:
-                    continue  # Skip if already recorded
-            
-            # ===== FIX: Handle timezone-aware datetime comparison =====
-            from datetime import timezone
-            
+                    continue
+
+            # Status check (timezone-aware)
             try:
-                capture_dt = parse_datetime_with_timezone(item['capture_time'])
-                session_start = parse_datetime_with_timezone(session_data['start_time'])
-                
-                # Calculate on-time limit with timezone-aware datetime
-                on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
-                
-                # Now we can safely compare timezone-aware datetimes
-                status = 'present' if capture_dt <= on_time_limit else 'late'
+                capture_dt = parse_datetime_with_timezone(item["capture_time"])
+                session_start = parse_datetime_with_timezone(session_data["start_time"])
+                on_time_limit = session_start + timedelta(minutes=session_data["on_time_limit_minutes"])
+                status = "present" if capture_dt <= on_time_limit else "late"
             except Exception as e:
-                logger.error(f"Datetime comparison error: {e}")
-                status = 'present'  # Default to present for manual teacher captures
-            
-            # Record manual teacher attendance
+                logger.error(f"Datetime error: {e}")
+                status = "present"
+
             record_data = {
-                'session_id': session_id,
-                'student_email': student_email,
-                'student_id': student_id,
-                'check_in_time': item['capture_time'],
-                'status': status,
-                'face_match_score': confidence,
-                'detection_method': 'manual_teacher_motion',
-                'processing_phase': phase,
-                'face_quality': face_info.get('quality_score', 1.0),
-                'motion_strength': item['motion_strength'],
-                'trigger_type': 'manual',
-                'force_capture': item.get('force_capture', False),
-                'created_at': datetime.now(timezone.utc).isoformat()
+                "session_id": session_id,
+                "student_email": student_email,
+                "student_id": student_id,
+                "check_in_time": item["capture_time"],
+                "status": status,
+                "face_match_score": confidence,
+                "detection_method": "manual_teacher_motion",
+                "processing_phase": phase,
+                "face_quality": face_info.get("quality_score", 1.0),
+                "motion_strength": item["motion_strength"],
+                "trigger_type": "manual",
+                "force_capture": item.get("force_capture", False),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
-            
-            try:
-                supabase.table('attendance_records').insert(record_data).execute()
-                new_records += 1
-                logger.info(f"✅ Manual teacher motion attendance recorded for {student_id}: {status}")
-            except Exception as e:
-                logger.error(f"❌ Error saving manual teacher motion record for {student_id}: {e}")
-        
+
+            supabase.table("attendance_records").insert(record_data).execute()
+            new_records += 1
+            logger.info(f"✅ Manual teacher motion attendance recorded for {student_id}: {status}")
+
         processing_time = time.time() - start_time
-        
-        # Update capture log
-        supabase.table('motion_captures').update({
-            'faces_detected': len(detected_faces),
-            'faces_recognized': len([f for f in detected_faces if f['verified']]),
-            'new_records': new_records,
-            'processing_time_ms': int(processing_time * 1000),
-            'processing_status': 'completed'
-        }).eq('session_id', session_id).eq('capture_time', item['capture_time']).execute()
-        
-        logger.info(f"👨‍🏫 Manual teacher motion capture complete: {new_records} new records in {processing_time:.2f}s")
-        
+
+        supabase.table("motion_captures").update({
+            "faces_detected": len(detected_faces),
+            "faces_recognized": len([f for f in detected_faces if f["verified"]]),
+            "new_records": new_records,
+            "processing_time_ms": int(processing_time * 1000),
+            "processing_status": "completed",
+        }).eq("session_id", session_id).eq("capture_time", item["capture_time"]).execute()
+
+        logger.info(f"👨‍🏫 Manual teacher motion capture complete: {new_records} records in {processing_time:.2f}s")
+
     except Exception as e:
         logger.error(f"❌ Error processing manual teacher motion capture: {e}")
-        
-        # Update status to failed
         try:
-            supabase.table('motion_captures').update({
-                'processing_status': 'failed',
-                'error_message': str(e)
-            }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
+            supabase.table("motion_captures").update({
+                "processing_status": "failed",
+                "error_message": str(e),
+            }).eq("session_id", item["session_id"]).eq("capture_time", item["capture_time"]).execute()
         except:
             pass
-USE_FAISS = os.getenv("USE_FAISS_FALLBACK", "true").lower() == "true"
-_faiss_indexes = {"unmasked": None, "masked": None}
-_faiss_idmaps = {"unmasked": [], "masked": []}
-
-def _ensure_faiss_loaded(kind: str = "unmasked", dim: int = 128):
-    if _faiss_indexes[kind] is not None:
-        return
-    # โหลด embeddings จาก DB แล้วประกอบ index
-    table = 'student_face_embeddings_unmasked' if kind == "unmasked" else 'student_face_embeddings_masked'
-    rows = supabase.table(table).select('student_id, face_embedding_json').eq('is_active', True).execute().data or []
-    if not rows:
-        _faiss_indexes[kind] = faiss.IndexFlatIP(dim)  # cosine ~ dot บน normalized
-        _faiss_idmaps[kind] = []
-        return
-    vecs = []
-    ids = []
-    for r in rows:
-        emb = np.array(json.loads(r['face_embedding_json']), dtype=np.float32)
-        emb = emb / (np.linalg.norm(emb) + 1e-9)
-        vecs.append(emb)
-        ids.append(r['student_id'])
-    xb = np.vstack(vecs).astype('float32')
-    index = faiss.IndexFlatIP(dim)
-    index.add(xb)
-    _faiss_indexes[kind] = index
-    _faiss_idmaps[kind] = ids
-    logger.info(f"FAISS index built: {kind} - {len(ids)} vectors")
-
+        
+        
 def faiss_search(query_vec: np.ndarray, topk: int = 5, masked: bool = False):
     kind = "masked" if masked else "unmasked"
     _ensure_faiss_loaded(kind, dim=query_vec.shape[0])

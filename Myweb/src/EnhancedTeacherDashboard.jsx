@@ -1766,7 +1766,20 @@ const handleManualCaptureFromVideo = async (imageBlob) => {
           </div>
         </div>
       )}
-
+<div className="grid grid-cols-3 gap-4 mt-4">
+  <div className="p-4 bg-green-50 rounded-lg text-center">
+    <div className="text-2xl font-bold text-green-600">{presentCount}</div>
+    <div className="text-sm text-green-600">มาเรียน</div>
+  </div>
+  <div className="p-4 bg-yellow-50 rounded-lg text-center">
+    <div className="text-2xl font-bold text-yellow-600">{lateCount}</div>
+    <div className="text-sm text-yellow-600">มาสาย</div>
+  </div>
+  <div className="p-4 bg-red-50 rounded-lg text-center">
+    <div className="text-2xl font-bold text-red-600">{absentCount}</div>
+    <div className="text-sm text-red-600">ขาดเรียน</div>
+  </div>
+</div>
       {/* Session Details Modal */}
       {showSessionDetailsModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">

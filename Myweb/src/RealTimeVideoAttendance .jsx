@@ -497,23 +497,35 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
 
               {/* Quick Stats */}
               {attendanceList.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-center p-2 bg-green-50 rounded">
-                      <div className="font-bold text-green-600">
-                        {attendanceList.filter(a => a.status === 'present').length}
-                      </div>
-                      <div className="text-green-600">Present</div>
-                    </div>
-                    <div className="text-center p-2 bg-yellow-50 rounded">
-                      <div className="font-bold text-yellow-600">
-                        {attendanceList.filter(a => a.status === 'late').length}
-                      </div>
-                      <div className="text-yellow-600">Late</div>
-                    </div>
-                  </div>
-                </div>
-              )}
+  <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow">
+    <h4 className="text-sm font-medium text-green-800 mb-2">🎉 นักเรียนล่าสุดที่เช็คชื่อ</h4>
+    <div className="flex justify-between items-center">
+      <div>
+        <div className="font-bold text-gray-900">
+          {attendanceList[attendanceList.length - 1].studentName}
+        </div>
+        <div className="text-sm text-gray-600">
+          {attendanceList[attendanceList.length - 1].studentId}
+        </div>
+      </div>
+      <div className="text-right">
+        <span className="text-sm font-medium text-green-600">
+          {attendanceList[attendanceList.length - 1].status.toUpperCase()}
+        </span>
+        <div className="text-xs text-gray-500">
+          {new Date(attendanceList[attendanceList.length - 1].timestamp).toLocaleTimeString()}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+{attendance.photoUrl && (
+  <img 
+    src={attendance.photoUrl} 
+    alt="snapshot" 
+    className="w-16 h-16 object-cover rounded-lg border" 
+  />
+)}
             </div>
 
             {/* System Status */}
