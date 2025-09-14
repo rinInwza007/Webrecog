@@ -115,3 +115,129 @@
 2025-09-15 01:50:41,318 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
 2025-09-15 01:50:43,782 | INFO | main | 🛑 Shutting down Motion Detection Server...
 2025-09-15 01:50:43,782 | INFO | main | ✅ Motion Detection Server shutdown complete
+2025-09-15 02:01:15,651 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-15 02:01:15,652 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-15 02:01:16,541 | INFO | main | ✅ Supabase connection working
+2025-09-15 02:01:16,541 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-15 02:01:16,541 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-15 02:01:16,542 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-15 02:01:16,542 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-15 02:01:16,542 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-15 02:01:16,542 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 02:01:31,998 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:32,228 | INFO | main | Creating motion session entry for 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:32,229 | INFO | main | 📱 Motion session created: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:32,361 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:36,683 | INFO | main | 📸 Motion snapshot triggered: strength=0.116, phase=0-10, priority=2
+2025-09-15 02:01:36,823 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 02:01:37,669 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:38,659 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:39,681 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:40,680 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:41,681 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:41,825 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:42,676 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:45,470 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:47,929 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:50,212 | INFO | main | 📸 Motion snapshot triggered: strength=0.260, phase=0-10, priority=1
+2025-09-15 02:01:50,344 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 02:01:51,208 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:52,206 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:53,206 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:54,213 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:55,204 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:56,219 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:57,214 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:57,932 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:01:58,311 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:01:59,210 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:00,207 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:01,217 | INFO | main | 📸 Motion snapshot triggered: strength=0.090, phase=0-10, priority=2
+2025-09-15 02:02:01,450 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 02:02:02,226 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:03,223 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:04,455 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:05,465 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:06,475 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:08,331 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:10,468 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:17,949 | INFO | main | 📸 Motion snapshot triggered: strength=0.056, phase=0-10, priority=2
+2025-09-15 02:02:18,094 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 02:02:18,330 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:18,745 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:18,883 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:19,476 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 02:02:29,637 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:39,317 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:49,223 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:02:59,330 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:09,633 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:18,780 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:29,628 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:39,327 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:49,183 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:03:59,323 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:06,729 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:09,760 | INFO | main | 🛑 Ending session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:09,911 | INFO | main | 📊 Found session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647, status: active, type: motion_detection
+2025-09-15 02:04:10,064 | INFO | main | ✅ Session updated successfully: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:10,064 | INFO | main | 📱 Motion session removed: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:10,064 | INFO | main | 🗑️ Removed from motion session manager: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 02:04:10,658 | WARNING | main | ⚠️ Table 'class_students' does not exist, using fallback method
+2025-09-15 02:04:10,658 | INFO | main | 🔍 Checking classes table for class 9cb54715-64e3-475d-ad67-074a058c4cc2
+2025-09-15 02:04:10,796 | INFO | main | 📋 Class data: {'class_id': '9cb54715-64e3-475d-ad67-074a058c4cc2', 'subject_name': 'computerscire', 'description': '', 'schedule': '', 'teacher_id': 'b1a90ae5-aae3-4f39-bf05-e417ed4b3f14', 'teacher_email': 'maxmito@gmail.com', 'class_code': '9ADYAX', 'created_at': '2025-09-14T14:25:34.991+00:00', 'updated_at': '2025-09-14T14:25:34.832203+00:00'}
+2025-09-15 02:04:10,796 | INFO | main | 🔧 DEBUG MODE: Using all users with face embeddings
+2025-09-15 02:04:10,943 | INFO | main | 🔧 DEBUG: Found 2 students with face embeddings: ['65021111', '65021240']
+2025-09-15 02:04:11,078 | ERROR | main | ❌ Motion snapshot error: {'code': 'PGRST116', 'details': 'The result contains 0 rows', 'hint': None, 'message': 'JSON object requested, multiple (or no) rows returned'}
+2025-09-15 02:07:49,306 | INFO | main | 🛑 Shutting down Motion Detection Server...
+2025-09-15 02:07:49,307 | INFO | main | ✅ Motion Detection Server shutdown complete
+2025-09-15 02:13:40,627 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-15 02:13:40,628 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-15 02:13:45,800 | ERROR | main | ❌ Supabase connection test failed: The read operation timed out
+2025-09-15 02:13:45,800 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-15 02:13:45,800 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-15 02:13:45,800 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-15 02:13:45,800 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-15 02:13:45,802 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-15 02:13:45,802 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 02:14:20,886 | INFO | main | 🎯 Starting motion detection session for 9cb54715-64e3-475d-ad67-074a058c4cc2 by maxmito@gmail.com
+2025-09-15 02:14:21,434 | INFO | main | 📱 Motion session created: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:21,573 | INFO | main | ✅ Motion detection session started: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:23,188 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:30,784 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:38,294 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:44,989 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:48,262 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:14:58,262 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:01,801 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:09,659 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:20,321 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:28,765 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:39,632 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:41,140 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:51,323 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:56,604 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:15:58,705 | INFO | main | 📊 Getting live stats for session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:16:00,526 | INFO | main | 🛑 Ending session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:16:00,674 | INFO | main | 📊 Found session: 51227aa2-9ff1-4dc7-b3db-961ae2358cae, status: active, type: motion_detection
+2025-09-15 02:16:00,807 | INFO | main | ✅ Session updated successfully: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:16:00,807 | INFO | main | 📱 Motion session removed: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:16:00,807 | INFO | main | 🗑️ Removed from motion session manager: 51227aa2-9ff1-4dc7-b3db-961ae2358cae
+2025-09-15 02:16:01,354 | WARNING | main | ⚠️ Table 'class_students' does not exist, using fallback method
+2025-09-15 02:16:01,354 | INFO | main | 🔍 Checking classes table for class 9cb54715-64e3-475d-ad67-074a058c4cc2
+2025-09-15 02:16:01,491 | INFO | main | 📋 Class data: {'class_id': '9cb54715-64e3-475d-ad67-074a058c4cc2', 'subject_name': 'computerscire', 'description': '', 'schedule': '', 'teacher_id': 'b1a90ae5-aae3-4f39-bf05-e417ed4b3f14', 'teacher_email': 'maxmito@gmail.com', 'class_code': '9ADYAX', 'created_at': '2025-09-14T14:25:34.991+00:00', 'updated_at': '2025-09-14T14:25:34.832203+00:00'}
+2025-09-15 02:16:01,491 | INFO | main | 🔧 DEBUG MODE: Using all users with face embeddings
+2025-09-15 02:16:01,622 | INFO | main | 🔧 DEBUG: Found 2 students with face embeddings: ['65021240', '65021111']
+2025-09-15 02:16:08,037 | INFO | main | 🛑 Shutting down Motion Detection Server...
+2025-09-15 02:16:08,037 | INFO | main | ✅ Motion Detection Server shutdown complete
+2025-09-15 02:16:09,882 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-15 02:16:09,882 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-15 02:16:10,154 | INFO | main | ✅ Supabase connection working
+2025-09-15 02:16:10,154 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-15 02:16:10,154 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-15 02:16:10,154 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-15 02:16:10,154 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-15 02:16:10,154 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-15 02:16:10,154 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 02:16:10,156 | INFO | main | 🛑 Shutting down Motion Detection Server...
+2025-09-15 02:16:10,156 | INFO | main | ✅ Motion Detection Server shutdown complete
