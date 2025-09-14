@@ -8,7 +8,7 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
     password: '',
     confirmPassword: '',
     fullName: '',
-    schoolId: '', // เพิ่ม school_id
+    schoolId: '', 
     role: 'student'
   })
   const [loading, setLoading] = useState(false)

@@ -1,0 +1,9 @@
+2025-09-14 19:19:53,673 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-14 19:19:53,673 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-14 19:19:55,081 | INFO | main | ✅ Supabase connection working
+2025-09-14 19:19:55,081 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-14 19:19:55,081 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-14 19:19:55,081 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-14 19:19:55,081 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-14 19:19:55,081 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-14 19:19:55,081 | INFO | main | 🔄 Starting motion processing queue...
