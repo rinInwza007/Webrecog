@@ -33,6 +33,7 @@ from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial.distance import cdist
 from typing import Optional, Dict, Any, List, Tuple
+from fastapi import WebSocket
 
 from prometheus_fastapi_instrumentator import Instrumentator
 from logging.handlers import RotatingFileHandler
@@ -276,6 +277,26 @@ class MotionDetectionProcessor:
 motion_processor = MotionDetectionProcessor()
 
 # ==================== Motion Session Management ====================
+
+active_connections = []
+
+@app.websocket("/ws/motion")
+async def motion_ws(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.append(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # (optional) ใช้สำหรับ client ส่ง event กลับ
+    except:
+        active_connections.remove(websocket)
+
+def broadcast_motion_event(event_data: dict):
+    for ws in active_connections:
+        try:
+            asyncio.create_task(ws.send_json(event_data))
+        except:
+            continue
 
 class MotionSessionManager:
     def __init__(self):
@@ -965,7 +986,8 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
     except Exception as e:
         logger.error(f"Error in face processing (MediaPipe): {e}")
         return []
-    
+
+
 @app.get("/api/class/{class_id}/students")
 async def get_class_students(class_id: str):
     """Get all students enrolled in a class with detailed information"""
@@ -1219,6 +1241,8 @@ async def get_class_students(class_id: str):
             "enrollment_methods_tried": enrollment_methods_tried if 'enrollment_methods_tried' in locals() else [],
             "timestamp": datetime.now().isoformat()
         }
+
+
 @app.get("/api/class/{class_id}/info")
 async def get_class_info(class_id: str):
     """Get comprehensive class information including students and embeddings"""
@@ -1315,6 +1339,31 @@ async def get_class_info(class_id: str):
     except Exception as e:
         logger.error(f"❌ Error getting class info: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get class info: {str(e)}")
+    
+@app.get("/api/class/{class_id}/summary")
+async def get_class_summary(class_id: str):
+    students_resp = await get_class_students(class_id)
+    total = len(students_resp["students"])
+
+    # Query attendance records
+    result = supabase.table("attendance_records")\
+        .select("status")\
+        .eq("class_id", class_id)\
+        .execute()
+
+    status_counts = {"present": 0, "late": 0, "absent": 0}
+    for rec in result.data:
+        if rec["status"] in status_counts:
+            status_counts[rec["status"]] += 1
+
+    return {
+        "class_id": class_id,
+        "total_students": total,
+        "present": status_counts["present"],
+        "late": status_counts["late"],
+        "absent": total - (status_counts["present"] + status_counts["late"])
+    }
+    
 @app.post("/api/debug/create-test-class-students")
 async def create_test_class_students():
     """Development helper: Create test class-student relationships"""
