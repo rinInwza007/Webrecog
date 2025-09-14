@@ -3,6 +3,7 @@ import { useAuth } from './AuthContext'
 import { supabase } from './supabaseClient'
 import ClassCodeDisplay from './ClassCodeDisplay'
 import LiveVideoStream from './LiveVideoStream'
+import ClassDetailView from './ClassDetailView' // เพิ่ม import
 
 const EnhancedTeacherDashboard = () => {
   const { user, signOut } = useAuth()
@@ -13,6 +14,10 @@ const EnhancedTeacherDashboard = () => {
   const [motionStats, setMotionStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
+  
+  // เพิ่ม state สำหรับ Class Detail View
+  const [selectedClass, setSelectedClass] = useState(null)
+  const [showClassDetail, setShowClassDetail] = useState(false)
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -41,6 +46,32 @@ const EnhancedTeacherDashboard = () => {
 
   // FastAPI URL
   const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
+
+  // Function สำหรับเปิด Class Detail View
+  const handleClassClick = (classData) => {
+    setSelectedClass(classData)
+    setShowClassDetail(true)
+  }
+
+  // Function สำหรับกลับจาก Class Detail View
+  const handleBackFromClassDetail = () => {
+    setShowClassDetail(false)
+    setSelectedClass(null)
+    // Refresh data เมื่อกลับมา
+    fetchTeacherData()
+  }
+
+  // ถ้ากำลังแสดง Class Detail View ให้แสดง component นั้น
+  if (showClassDetail && selectedClass) {
+    return (
+      <ClassDetailView 
+        classData={selectedClass} 
+        onBack={handleBackFromClassDetail}
+      />
+    )
+  }
+
+  // ... (คงโค้ดเดิมทั้งหมด แต่เพิ่มการจัดการ click ที่คลาส)
 
   useEffect(() => {
     // Debug user information
@@ -171,6 +202,9 @@ const EnhancedTeacherDashboard = () => {
     setLoading(false)
   }
 }
+
+// ... (คงฟังก์ชันอื่นๆ เดิมทั้งหมด - fetchAttendanceRecords, handleManualCaptureFromVideo, etc.)
+
   const fetchAttendanceRecords = async (sessionId) => {
   try {
     console.log(`🔍 Fetching attendance for session: ${sessionId}`)
@@ -237,6 +271,7 @@ const EnhancedTeacherDashboard = () => {
     setAttendanceRecords([]) // ตั้งค่าเป็น array ว่างเมื่อมีข้อผิดพลาด
   }
 }
+
 const handleManualCaptureFromVideo = async (imageBlob) => {
   if (!currentSession) {
     alert('ไม่พบเซสชันที่ใช้งานอยู่')
@@ -715,13 +750,13 @@ const debugTableSchema = async (tableName) => {
           </div>
         )}
           <div className="mb-8">
-  <LiveVideoStream
-    currentSession={currentSession}
-    isSessionActive={currentSession !== null}
-    onManualCapture={handleManualCaptureFromVideo}
-    motionStats={motionStats}
-  />
-</div>
+        <LiveVideoStream
+          currentSession={currentSession}
+          isSessionActive={currentSession !== null}
+          onManualCapture={handleManualCaptureFromVideo}
+          motionStats={motionStats}
+        />
+      </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -823,10 +858,10 @@ const debugTableSchema = async (tableName) => {
         </div>
 
         {/* Classes Section */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
+         <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
           <div className="p-8 border-b border-gray-200">
             <h2 className="text-2xl font-bold text-gray-900">📚 คลาสเรียนของฉัน</h2>
-            <p className="text-gray-600 mt-1">จัดการคลาสเรียนและรหัสเข้าร่วม</p>
+            <p className="text-gray-600 mt-1">จัดการคลาสเรียนและรหัสเข้าร่วม - คลิกที่คลาสเพื่อดูรายละเอียด</p>
           </div>
 
           <div className="p-8">
@@ -849,7 +884,11 @@ const debugTableSchema = async (tableName) => {
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
                 {classes.map((cls) => (
-                  <div key={cls.class_id} className="bg-gradient-to-br from-white to-gray-50 border-2 border-gray-200 rounded-xl p-6 hover:shadow-xl hover:border-blue-300 transition-all group">
+                  <div 
+                    key={cls.class_id} 
+                    className="bg-gradient-to-br from-white to-gray-50 border-2 border-gray-200 rounded-xl p-6 hover:shadow-xl hover:border-blue-300 transition-all group cursor-pointer"
+                    onClick={() => handleClassClick(cls)} // เพิ่มการคลิก
+                  >
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex-1">
                         <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">
@@ -872,10 +911,13 @@ const debugTableSchema = async (tableName) => {
                               <p className="text-lg font-bold text-blue-800 font-mono">{cls.class_code}</p>
                             </div>
                             <button
-                              onClick={() => setShowClassCodeModal({
-                                code: cls.class_code,
-                                name: cls.subject_name
-                              })}
+                              onClick={(e) => {
+                                e.stopPropagation() // ป้องกันไม่ให้ trigger การคลิกของ card
+                                setShowClassCodeModal({
+                                  code: cls.class_code,
+                                  name: cls.subject_name
+                                })
+                              }}
                               className="text-blue-600 hover:text-blue-800 p-1"
                               title="แชร์รหัสคลาส"
                             >
@@ -885,11 +927,21 @@ const debugTableSchema = async (tableName) => {
                             </button>
                           </div>
                         </div>
+
+                        {/* เพิ่มข้อความบอกให้คลิก */}
+                        <div className="text-center py-2 bg-gray-50 rounded-lg border border-dashed border-gray-300 group-hover:bg-blue-50 group-hover:border-blue-300 transition-colors">
+                          <p className="text-sm text-gray-500 group-hover:text-blue-600 transition-colors">
+                            📊 คลิกเพื่อดูข้อมูลการเช็คชื่อ
+                          </p>
+                        </div>
                       </div>
                       
                       <div className="ml-4 flex flex-col space-y-2">
                         <button
-                          onClick={() => setShowStartSessionModal(cls.class_id)}
+                          onClick={(e) => {
+                            e.stopPropagation() // ป้องกันไม่ให้ trigger การคลิกของ card
+                            setShowStartSessionModal(cls.class_id)
+                          }}
                           disabled={currentSession !== null}
                           className="text-green-600 hover:text-green-800 p-2 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title="เริ่ม Motion Detection"
@@ -899,7 +951,10 @@ const debugTableSchema = async (tableName) => {
                           </svg>
                         </button>
                         <button
-                          onClick={() => deleteClass(cls.class_id, cls.subject_name)}
+                          onClick={(e) => {
+                            e.stopPropagation() // ป้องกันไม่ให้ trigger การคลิกของ card
+                            deleteClass(cls.class_id, cls.subject_name)
+                          }}
                           disabled={actionLoading}
                           className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           title="ลบคลาส"
@@ -928,7 +983,7 @@ const debugTableSchema = async (tableName) => {
         </div>
 
         {/* Attendance Records */}
-        {currentSession && (
+         {currentSession && (
           <div className="bg-white rounded-xl shadow-lg border border-gray-200">
             <div className="p-8 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">👥 บันทึกการเข้าเรียน</h2>
