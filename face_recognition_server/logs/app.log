@@ -7,3 +7,111 @@
 2025-09-14 19:19:55,081 | INFO | main | ⏰ Motion Cooldown: 30s
 2025-09-14 19:19:55,081 | INFO | main | 📈 Max Snapshots/Hour: 120
 2025-09-14 19:19:55,081 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 01:45:24,575 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-15 01:45:24,576 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-15 01:45:25,089 | INFO | main | ✅ Supabase connection working
+2025-09-15 01:45:25,090 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-15 01:45:25,090 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-15 01:45:25,090 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-15 01:45:25,090 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-15 01:45:25,090 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-15 01:45:25,090 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 01:45:47,806 | INFO | main | 🚀 Starting Motion Detection Attendance Server...
+2025-09-15 01:45:47,807 | ERROR | main | ❌ Face recognition test failed: name 'face_recognition' is not defined
+2025-09-15 01:45:48,128 | INFO | main | ✅ Supabase connection working
+2025-09-15 01:45:48,128 | INFO | main | ✅ Motion Detection Server startup complete
+2025-09-15 01:45:48,129 | INFO | main | 📊 Motion Detection: Enabled
+2025-09-15 01:45:48,129 | INFO | main | 🎯 Default Motion Threshold: 0.1
+2025-09-15 01:45:48,129 | INFO | main | ⏰ Motion Cooldown: 30s
+2025-09-15 01:45:48,129 | INFO | main | 📈 Max Snapshots/Hour: 120
+2025-09-15 01:45:48,129 | INFO | main | 🔄 Starting motion processing queue...
+2025-09-15 01:48:11,251 | INFO | main | 🎯 Starting motion detection session for 9cb54715-64e3-475d-ad67-074a058c4cc2 by maxmito@gmail.com
+2025-09-15 01:48:11,806 | INFO | main | 📱 Motion session created: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:11,954 | INFO | main | ✅ Motion detection session started: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:13,910 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:15,346 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:17,626 | INFO | main | 📸 Motion snapshot triggered: strength=0.125, phase=0-10, priority=2
+2025-09-15 01:48:18,182 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:48:18,597 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:19,586 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:20,598 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:21,607 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:22,586 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:23,610 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:25,474 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:26,319 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:31,181 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:34,450 | INFO | main | 📸 Motion snapshot triggered: strength=0.103, phase=0-10, priority=2
+2025-09-15 01:48:34,620 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:48:35,429 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:36,473 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:39,160 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:42,369 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:43,467 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:48:49,322 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:52,385 | INFO | main | 📸 Motion snapshot triggered: strength=0.150, phase=0-10, priority=1
+2025-09-15 01:48:52,614 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:48:52,935 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:48:56,486 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:03,630 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:04,468 | INFO | main | 📸 Motion snapshot triggered: strength=0.138, phase=0-10, priority=2
+2025-09-15 01:49:05,007 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:49:08,470 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:09,476 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:12,703 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:13,329 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:13,774 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:14,481 | INFO | main | 📸 Motion snapshot triggered: strength=0.074, phase=0-10, priority=2
+2025-09-15 01:49:15,063 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:15,215 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:49:15,338 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:26,632 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:36,320 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:45,170 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:48,061 | INFO | main | 📸 Motion snapshot triggered: strength=0.098, phase=0-10, priority=2
+2025-09-15 01:49:48,189 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:49:49,067 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:51,462 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:52,484 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:55,318 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:49:57,472 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:58,486 | INFO | main | 📸 Motion snapshot triggered: strength=0.108, phase=0-10, priority=2
+2025-09-15 01:49:59,257 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:49:59,466 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:49:59,870 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:03,143 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:04,073 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:05,053 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:06,069 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:07,069 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:08,062 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:09,064 | INFO | main | 📸 Motion snapshot triggered: strength=0.142, phase=0-10, priority=2
+2025-09-15 01:50:09,304 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:50:09,872 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:10,279 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:11,058 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:12,055 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:13,070 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:14,059 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:15,069 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:16,056 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:17,076 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:18,056 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:19,057 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:19,873 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:20,276 | INFO | main | 📸 Motion snapshot triggered: strength=0.100, phase=0-10, priority=2
+2025-09-15 01:50:20,425 | ERROR | main | ❌ Motion queue processing error: 'function' object has no attribute 'delay'
+2025-09-15 01:50:21,059 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:22,065 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:23,069 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:24,081 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:25,475 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:26,472 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:27,471 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:28,479 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:29,475 | INFO | main | 📵 Motion snapshot blocked: cooldown_active
+2025-09-15 01:50:30,328 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:30,877 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:41,318 | INFO | main | 📊 Getting live stats for session: 11b1ebd6-5de1-427c-9e92-b4f230ac3647
+2025-09-15 01:50:43,782 | INFO | main | 🛑 Shutting down Motion Detection Server...
+2025-09-15 01:50:43,782 | INFO | main | ✅ Motion Detection Server shutdown complete
