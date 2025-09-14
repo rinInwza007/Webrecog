@@ -1,70 +1,127 @@
 # Enhanced Face Recognition Server - Motion Detection System
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-import cv2
-import face_recognition
-import numpy as np
-import io
-import base64
-from PIL import Image
-import json
-from typing import Optional, Dict, Any, List
-import requests
-from datetime import datetime, timedelta
-import logging
-from dotenv import load_dotenv
+
 import os
-from supabase import create_client, Client
-import asyncio
-import uuid
-from concurrent.futures import ThreadPoolExecutor
-import threading
+import io
+import cv2
+import faiss
+import jwt
 import time
+import json
+import uuid
+import base64
+import pickle
+import asyncio
+import logging
+import hashlib
+import threading
 import heapq
+import numpy as np
+import requests
+import mediapipe as mp
+
+from PIL import Image
+from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
+from supabase import create_client, Client
+from concurrent.futures import ThreadPoolExecutor
 from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
-import pickle
-import hashlib
-from typing import Tuple
 from scipy.spatial.distance import cdist
-from datetime import timezone
+from typing import Optional, Dict, Any, List, Tuple
 
-# Load environment variables
-load_dotenv()
+from prometheus_fastapi_instrumentator import Instrumentator
+from logging.handlers import RotatingFileHandler
 
-# Configuration
+# ✅ โหลด environment variables (.env) แบบ UTF-8
+load_dotenv(encoding="utf-8")
+
+#mediapipe tool #
+mp_face_detection = mp.solutions.face_detection
+
+# ==================== Configuration ====================
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", 8000))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.4))
 
-# Motion Detection Configuration
+# Motion Detection Config
 MOTION_DETECTION_ENABLED = os.getenv("MOTION_DETECTION_ENABLED", "true").lower() == "true"
 DEFAULT_MOTION_THRESHOLD = float(os.getenv("DEFAULT_MOTION_THRESHOLD", 0.1))
 MOTION_COOLDOWN_SECONDS = int(os.getenv("MOTION_COOLDOWN_SECONDS", 30))
 MAX_SNAPSHOTS_PER_HOUR = int(os.getenv("MAX_SNAPSHOTS_PER_HOUR", 120))
 
+# JWT
+JWT_SECRET = os.getenv("JWT_SECRET", "change_me_jwt_secret")
+JWT_ALGORITHM = "HS256"
+security = HTTPBearer(auto_error=True)
+
 # Supabase setup
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
-
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Configure logging
+# ==================== Logging ====================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+log_dir = os.path.join(os.getcwd(), "logs")
+os.makedirs(log_dir, exist_ok=True)
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, "app.log"),
+    maxBytes=5_000_000, backupCount=5, encoding="utf-8"
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s"))
+logger.addHandler(file_handler)
+
+# ==================== FastAPI ====================
 app = FastAPI(
     title="Motion Detection Attendance System",
     description="Face Recognition Server with Motion-Triggered Snapshots",
     version="5.0.0"
 )
 
+# Prometheus Monitoring
+if os.getenv("PROMETHEUS_ENABLED", "true").lower() == "true":
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Thread pool
+executor = ThreadPoolExecutor(max_workers=8)
+
+# ==================== Dummy Limiter (for demo) ====================
+class DummyLimiter:
+    def limit(self, *args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+limiter = DummyLimiter()
+
+# ==================== Example Endpoint ====================
+@app.get("/api/system/health")
+async def system_health():
+    return {
+        "ok": True,
+        "time": datetime.now().isoformat(),
+    }
+
+    
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -107,7 +164,29 @@ class MotionDetectionStats(BaseModel):
     motion_events_by_hour: Dict[str, int]
 
 # ==================== Motion Detection Processor ====================
+def create_jwt_token(data: dict, expires_delta: timedelta = timedelta(hours=4)):
+    to_encode = data.copy()
+    to_encode.update({"exp": datetime.utcnow() + expires_delta})
+    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
+def verify_jwt_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+# ตัวอย่าง endpoint แจก token (ใส่ auth จริงทีหลัง)
+@app.post("/api/auth/dev-login")
+@limiter.limit("10/minute")  # ✅ ใช้ได้แต่ไม่บล็อก
+async def dev_login(email: str = Form(...)):
+    token = jwt.encode({"sub": email, "exp": datetime.utcnow() + timedelta(hours=4)}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {"access_token": token, "token_type": "bearer"}
+    
 class MotionDetectionProcessor:
     def __init__(self):
         self.adaptive_thresholds = {
@@ -741,77 +820,89 @@ class AdvancedFaceEmbeddingManager:
         except Exception as e:
             logger.error(f"Error processing ensemble embeddings for {student_id}: {e}")
             return None
+
 def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_students: List[str], 
                                        config: Dict, motion_strength: float = 0.5,
                                        use_advanced_similarity: bool = True) -> List[Dict]:
-    """Face processing with advanced similarity calculation and detailed analysis"""
+    """Face processing with MediaPipe detection + crop + embedding + advanced similarity"""
     try:
         start_time = time.time()
         embedding_manager = AdvancedFaceEmbeddingManager()
-        
+
         if image_array is None or image_array.size == 0:
             logger.warning("Empty image array")
             return []
-        
+
         if not enrolled_students:
             logger.warning("No enrolled students")
             return []
-        
-        logger.info(f"🔍 Advanced processing with {len(enrolled_students)} enrolled students")
-        
-        # Optimized face detection
+
+        logger.info(f"🔍 Processing with {len(enrolled_students)} enrolled students")
+
+        # Resize เพื่อลดขนาดถ้าใหญ่เกินไป
         height, width = image_array.shape[:2]
         max_dimension = 600
-        
         if max(height, width) > max_dimension:
             scale = max_dimension / max(height, width)
             new_width = int(width * scale)
             new_height = int(height * scale)
             image_array = cv2.resize(image_array, (new_width, new_height))
-            logger.debug(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
-        
-        # Detect faces
-        face_locations = face_recognition.face_locations(image_array, model="hog")
-        
-        if not face_locations:
-            logger.info("❌ No faces detected")
+            logger.debug(f"Resized image: {width}x{height} → {new_width}x{new_height}")
+
+        # ใช้ MediaPipe ตรวจจับใบหน้า
+        rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+        cropped_faces = []
+        face_locations = []
+
+        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.6) as detector:
+            results = detector.process(rgb_image)
+            if results.detections:
+                h, w, _ = image_array.shape
+                for det in results.detections:
+                    bbox = det.location_data.relative_bounding_box
+                    x, y, bw, bh = int(bbox.xmin * w), int(bbox.ymin * h), int(bbox.width * w), int(bbox.height * h)
+
+                    # margin เผื่อรอบหน้า
+                    margin = 0.2
+                    x1 = max(0, x - int(bw * margin))
+                    y1 = max(0, y - int(bh * margin))
+                    x2 = min(w, x + bw + int(bw * margin))
+                    y2 = min(h, y + bh + int(bh * margin))
+
+                    face_crop = rgb_image[y1:y2, x1:x2]
+                    if face_crop.size > 0:
+                        cropped_faces.append(face_crop)
+                        face_locations.append((y1, x2, y2, x1))  # (top, right, bottom, left)
+
+        if not cropped_faces:
+            logger.info("❌ No faces detected with MediaPipe")
             return []
-        
-        logger.info(f"👥 Detected {len(face_locations)} faces")
-        
-        # Get face encodings
-        face_encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=1)
-        
-        if not face_encodings:
-            logger.warning("❌ No face encodings generated")
-            return []
-        
+
+        logger.info(f"👥 Detected {len(cropped_faces)} faces (MediaPipe)")
+
         detected_faces = []
         base_threshold = config.get('face_threshold', 0.6)
-        
-        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
-            logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)} with advanced matching")
-            
-            # Normalize the detected encoding
+
+        for i, (face_crop, location) in enumerate(zip(cropped_faces, face_locations)):
+            encodings = face_recognition.face_encodings(face_crop)
+            if not encodings:
+                logger.warning(f"❌ No encoding generated for face {i+1}")
+                continue
+
+            encoding = encodings[0]
             norm_encoding = normalize_embedding(encoding)
             if norm_encoding is None:
                 logger.warning(f"Failed to normalize encoding for face {i+1}")
                 continue
-            
-            # Advanced similarity analysis
+
             similarity_results = []
-            
             for student_id in enrolled_students:
                 stored_embedding = embedding_manager.get_embedding_advanced(student_id)
-                
                 if stored_embedding is None:
-                    logger.debug(f"No advanced embedding found for {student_id}")
                     continue
-                
+
                 if use_advanced_similarity:
-                    # Use advanced similarity calculation
                     similarity_metrics = calculate_advanced_similarity(norm_encoding, stored_embedding)
-                    
                     similarity_results.append({
                         'student_id': student_id,
                         'similarity_score': similarity_metrics['combined_score'],
@@ -819,43 +910,23 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
                         'detailed_metrics': similarity_metrics
                     })
                 else:
-                    # Use simple similarity for comparison
-                    simple_score = calculate_enhanced_similarity(norm_encoding, stored_embedding)
+                    simple_score = np.dot(norm_encoding, stored_embedding)
                     similarity_results.append({
                         'student_id': student_id,
                         'similarity_score': simple_score,
                         'confidence_level': 'medium',
                         'detailed_metrics': {'simple_score': simple_score}
                     })
-            
-            # Sort by similarity score
+
             similarity_results.sort(key=lambda x: x['similarity_score'], reverse=True)
-            
-            # Log top candidates with detailed metrics
-            logger.info(f"📊 Advanced analysis for face {i+1}:")
-            for j, result in enumerate(similarity_results[:3]):
-                metrics = result['detailed_metrics']
-                if 'cosine_similarity' in metrics:
-                    logger.info(f"  {j+1}. {result['student_id']}: "
-                              f"combined={result['similarity_score']:.3f}, "
-                              f"cosine={metrics['cosine_similarity']:.3f}, "
-                              f"euclidean={metrics['euclidean_similarity']:.3f}, "
-                              f"confidence={result['confidence_level']}")
-                else:
-                    logger.info(f"  {j+1}. {result['student_id']}: "
-                              f"score={result['similarity_score']:.3f}, "
-                              f"confidence={result['confidence_level']}")
-            
-            # Determine best match with adaptive threshold
+
             best_match = None
             best_score = 0.0
             confidence_level = 'very_low'
             threshold = base_threshold
-            
+
             if similarity_results:
                 top_result = similarity_results[0]
-                
-                # Adaptive threshold based on confidence level
                 if top_result['confidence_level'] == 'very_high':
                     threshold = base_threshold * 0.7
                 elif top_result['confidence_level'] == 'high':
@@ -864,20 +935,12 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
                     threshold = base_threshold * 0.9
                 else:
                     threshold = base_threshold * 1.1
-                
+
                 if top_result['similarity_score'] > threshold:
                     best_match = top_result['student_id']
                     best_score = top_result['similarity_score']
                     confidence_level = top_result['confidence_level']
-                    
-                    logger.info(f"✅ Face {i+1} recognized as {best_match} "
-                              f"(score: {best_score:.3f}, confidence: {confidence_level}, threshold: {threshold:.3f})")
-                else:
-                    logger.info(f"❌ Face {i+1} not recognized. "
-                              f"Best score: {top_result['similarity_score']:.3f} "
-                              f"(threshold: {threshold:.3f}, confidence: {top_result['confidence_level']})")
-            
-            # Face info with advanced metrics
+
             face_info = {
                 'face_index': i,
                 'student_id': best_match,
@@ -885,32 +948,24 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
                 'verified': best_match is not None,
                 'confidence_level': confidence_level,
                 'threshold_used': threshold,
-                'advanced_analysis': similarity_results[:5],  # Top 5 candidates
+                'advanced_analysis': similarity_results[:5],
                 'bounding_box': {
-                    'top': int(location[0]),
-                    'right': int(location[1]),
-                    'bottom': int(location[2]),
-                    'left': int(location[3])
+                    'top': int(location[0]), 'right': int(location[1]),
+                    'bottom': int(location[2]), 'left': int(location[3])
                 },
-                'processing_method': 'advanced_similarity',
+                'processing_method': 'mediapipe+advanced_similarity',
                 'motion_strength': motion_strength,
                 'processing_time': time.time() - start_time
             }
-            
             detected_faces.append(face_info)
-        
-        processing_time = time.time() - start_time
-        verified_count = len([f for f in detected_faces if f['verified']])
-        
-        logger.info(f"📋 Advanced processing complete: "
-                  f"{len(face_locations)} detected → {len(face_encodings)} encoded → {verified_count} recognized "
-                  f"in {processing_time:.2f}s")
-        
+
+        logger.info(f"📋 Processing complete: {len(detected_faces)} faces in {time.time()-start_time:.2f}s")
         return detected_faces
-        
+
     except Exception as e:
-        logger.error(f"Error in advanced face processing: {e}")
+        logger.error(f"Error in face processing (MediaPipe): {e}")
         return []
+    
 @app.get("/api/class/{class_id}/students")
 async def get_class_students(class_id: str):
     """Get all students enrolled in a class with detailed information"""
@@ -1794,6 +1849,32 @@ async def process_motion_triggered_background(item: Dict):
             }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
         except:
             pass
+USE_PGVECTOR = os.getenv("USE_PGVECTOR", "true").lower() == "true"
+
+def pgvector_query(table: str, query_vec: np.ndarray, topk: int = 5):
+    """
+    ต้องมีฟังก์ชัน RPC ใน Supabase ชื่อ 'vector_search'
+    CREATE OR REPLACE FUNCTION public.vector_search(tbl text, qvec vector, k int)
+    RETURNS TABLE(student_id text, distance float)
+    LANGUAGE sql STABLE AS $$
+      SELECT student_id, (face_vec <-> qvec) AS distance
+      FROM public.%I
+      ORDER BY face_vec <-> qvec
+      LIMIT k
+    $$;
+    """
+    try:
+        payload = {
+            "tbl": table,
+            "qvec": query_vec.tolist(),
+            "k": topk
+        }
+        result = supabase.rpc("vector_search", payload).execute()
+        return result.data or []
+    except Exception as e:
+        logger.warning(f"pgvector_query error: {e}")
+        return []
+        
 def parse_datetime_with_timezone(datetime_str: str):
     """Parse datetime string with proper timezone handling"""
     from datetime import timezone
@@ -3110,7 +3191,53 @@ async def shutdown_event():
     
     executor.shutdown(wait=True)
     logger.info("✅ Motion Detection Server shutdown complete")
+def _eye_aspect_ratio(eye_pts: list) -> float:
+    # eye_pts เป็น list จุดรอบดวงตา (face_recognition ไม่มี index ตายตัว เราใช้ความยาว-สั้นแบบคร่าว ๆ)
+    if len(eye_pts) < 6:
+        return 0.25  # ค่าปลอดภัย
+    # คำนวณคร่าว ๆ: อัตราส่วนความสูง/ความกว้าง
+    p = np.array(eye_pts)
+    h = np.linalg.norm(p[1] - p[5]) + np.linalg.norm(p[2] - p[4])
+    w = np.linalg.norm(p[0] - p[3])
+    return (h / (2.0 * w + 1e-6))
 
+def simple_liveness_check(face_image_rgb: np.ndarray) -> dict:
+    """
+    Liveness แบบเร็ว ๆ:
+    - ถ้ามีดวงตาทั้งสองข้าง + EAR เหนือ threshold ให้ผ่าน
+    - TODO: เปลี่ยนเป็นโมเดล CNN/ONNX/MediaPipe ในอนาคต
+    """
+    try:
+        landmarks = face_recognition.face_landmarks(face_image_rgb)
+        if not landmarks:
+            return {"liveness": False, "confidence": 0.2, "reason": "no_landmarks"}
+
+        left_eye = landmarks[0].get("left_eye", [])
+        right_eye = landmarks[0].get("right_eye", [])
+        if not left_eye or not right_eye:
+            return {"liveness": False, "confidence": 0.3, "reason": "no_eyes"}
+
+        ear_left = _eye_aspect_ratio(left_eye)
+        ear_right = _eye_aspect_ratio(right_eye)
+        ear = (ear_left + ear_right) / 2.0
+
+        # ค่าคร่าว ๆ>0.19 ถือว่าตา "เปิด"
+        live = ear > 0.19
+        conf = min(0.95, max(0.35, (ear - 0.15) * 6.0))  # scale เป็น 0.35~0.95
+        return {"liveness": bool(live), "confidence": float(conf), "reason": "heuristic_eyes"}
+    except Exception as e:
+        logger.warning(f"Liveness error: {e}")
+        return {"liveness": False, "confidence": 0.2, "reason": "exception"}
+
+@app.post("/api/verify-liveness")
+@limiter.limit("30/minute")
+async def verify_liveness(image: UploadFile = File(...), user=Depends(verify_jwt_token)):
+    img = Image.open(io.BytesIO(await image.read())).convert("RGB")
+    arr = np.array(img)
+    # NOTE: ใช้ทั้งภาพ (หรือ crop เฉพาะหน้า ถ้าคุณรู้ bbox แล้ว)
+    result = simple_liveness_check(arr)
+    return result
+    
 @app.post("/api/session/start-motion-detection")
 async def start_motion_detection_session(
     background_tasks: BackgroundTasks,
@@ -3495,7 +3622,8 @@ async def process_motion_queue():
             if item['processing_type'] == 'session_start':
                 await process_motion_session_start(item)
             elif item['processing_type'] == 'motion_triggered':
-                await process_motion_triggered_background(item)
+                await process_motion_capture_task.delay(item)
+                return {"queued": True, "session_id": item["session_id"], "capture_time": item["capture_time"]}
             elif item['processing_type'] == 'manual_teacher_capture':
                 await process_manual_teacher_motion_capture(item)
             else:
@@ -3504,6 +3632,101 @@ async def process_motion_queue():
         except Exception as e:
             logger.error(f"❌ Motion queue processing error: {e}")
             await asyncio.sleep(1)
+# ==== Minimal Register/Verify (NEW) ====
+
+@app.post("/api/register-face")
+@limiter.limit("20/minute")
+async def register_face(
+    student_id: str = Form(...),
+    image: UploadFile = File(...),
+    user=Depends(verify_jwt_token),
+):
+    img = Image.open(io.BytesIO(await image.read())).convert("RGB")
+    arr = np.array(img)
+
+    # 1) liveness (เบื้องต้น)
+    live = simple_liveness_check(arr)
+    if not live["liveness"]:
+        raise HTTPException(status_code=400, detail="Liveness failed")
+
+    # 2) สร้าง embedding ใบหน้าแรกที่เจอ
+    locs = face_recognition.face_locations(arr, model="hog")
+    if not locs:
+        raise HTTPException(status_code=400, detail="No face detected")
+    encs = face_recognition.face_encodings(arr, locs, num_jitters=1)
+    emb = normalize_embedding(encs[0]).astype('float32')
+
+    # 3) เช็คแมสก์ เพื่อเลือก bank
+    roi = arr[locs[0][0]:locs[0][2], locs[0][3]:locs[0][1]]
+    m = predict_mask(roi)
+    table = 'student_face_embeddings_masked' if m["masked"] else 'student_face_embeddings_unmasked'
+
+    # 4) เซฟ DB (JSON + vector ถ้ามี pgvector)
+    data = {
+        "student_id": student_id,
+        "face_embedding_json": json.dumps(emb.tolist()),
+        "is_active": True,
+        "created_at": datetime.now().isoformat()
+    }
+    if os.getenv("USE_PGVECTOR", "true").lower() == "true":
+        data["face_vec"] = emb.tolist()  # PostgREST + pgvector
+    supabase.table(table).update({"is_active": False}).eq("student_id", student_id).execute()
+    supabase.table(table).insert(data).execute()
+
+    # 5) อัปเดต FAISS index ในหน่วยความจำ (ถ้าเปิดใช้)
+    if USE_FAISS:
+        # รีบิวด์ง่าย ๆ (งานจริงแนะนำลงคิว)
+        if m["masked"]:
+            _faiss_indexes["masked"] = None
+        else:
+            _faiss_indexes["unmasked"] = None
+
+    return {"ok": True, "student_id": student_id, "masked": m["masked"], "liveness_conf": live["confidence"]}
+
+
+@app.post("/api/verify-face")
+@limiter.limit("60/minute")
+async def verify_face(
+    class_id: str = Form(...),
+    image: UploadFile = File(...),
+    user=Depends(verify_jwt_token),
+):
+    img = Image.open(io.BytesIO(await image.read())).convert("RGB")
+    arr = np.array(img)
+
+    locs = face_recognition.face_locations(arr, model="hog")
+    if not locs:
+        return {"verified": False, "message": "no_face"}
+
+    encs = face_recognition.face_encodings(arr, locs, num_jitters=1)
+
+    # เรียกรายชื่อนักเรียนในคลาส (ใช้ฟังก์ชันเดิมของคุณ)
+    enrolled_students = [s["student_id"] for s in (await get_class_students(class_id))["students"]]
+
+    results = []
+    for loc, enc in zip(locs, encs):
+        face_rgb = arr[loc[0]:loc[2], loc[3]:loc[1]]
+        live = simple_liveness_check(face_rgb)
+        if not live["liveness"]:
+            results.append({"verified": False, "reason": "liveness_failed"})
+            continue
+
+        masked = predict_mask(face_rgb)["masked"]
+
+        # vector search (pgvector หรือ FAISS)
+        q = normalize_embedding(enc).astype('float32')
+        topk = search_similar_students(q, masked=masked, topk=5)
+
+        # กรองให้เหลือเฉพาะนักเรียนในคลาส
+        candidates = [c for c in topk if c.get("student_id") in enrolled_students]
+        best = max(candidates, key=lambda x: x.get("similarity", 0.0), default=None)
+
+        if best and best.get("similarity", 0.0) >= float(os.getenv("FACE_VERIFICATION_THRESHOLD", "0.70")):
+            results.append({"verified": True, "student_id": best["student_id"], "similarity": best["similarity"], "masked": masked})
+        else:
+            results.append({"verified": False, "reason": "threshold_not_met", "masked": masked})
+
+    return {"class_id": class_id, "results": results}
 
 async def process_motion_session_start(item: Dict):
     """Process session start for motion detection system"""
@@ -3840,7 +4063,58 @@ async def process_manual_teacher_motion_capture(item: Dict):
             }).eq('session_id', item['session_id']).eq('capture_time', item['capture_time']).execute()
         except:
             pass
+USE_FAISS = os.getenv("USE_FAISS_FALLBACK", "true").lower() == "true"
+_faiss_indexes = {"unmasked": None, "masked": None}
+_faiss_idmaps = {"unmasked": [], "masked": []}
 
+def _ensure_faiss_loaded(kind: str = "unmasked", dim: int = 128):
+    if _faiss_indexes[kind] is not None:
+        return
+    # โหลด embeddings จาก DB แล้วประกอบ index
+    table = 'student_face_embeddings_unmasked' if kind == "unmasked" else 'student_face_embeddings_masked'
+    rows = supabase.table(table).select('student_id, face_embedding_json').eq('is_active', True).execute().data or []
+    if not rows:
+        _faiss_indexes[kind] = faiss.IndexFlatIP(dim)  # cosine ~ dot บน normalized
+        _faiss_idmaps[kind] = []
+        return
+    vecs = []
+    ids = []
+    for r in rows:
+        emb = np.array(json.loads(r['face_embedding_json']), dtype=np.float32)
+        emb = emb / (np.linalg.norm(emb) + 1e-9)
+        vecs.append(emb)
+        ids.append(r['student_id'])
+    xb = np.vstack(vecs).astype('float32')
+    index = faiss.IndexFlatIP(dim)
+    index.add(xb)
+    _faiss_indexes[kind] = index
+    _faiss_idmaps[kind] = ids
+    logger.info(f"FAISS index built: {kind} - {len(ids)} vectors")
+
+def faiss_search(query_vec: np.ndarray, topk: int = 5, masked: bool = False):
+    kind = "masked" if masked else "unmasked"
+    _ensure_faiss_loaded(kind, dim=query_vec.shape[0])
+    if _faiss_indexes[kind].ntotal == 0:
+        return []
+    q = (query_vec / (np.linalg.norm(query_vec) + 1e-9)).astype('float32')[None, :]
+    sims, idxs = _faiss_indexes[kind].search(q, topk)
+    out = []
+    for sim, i in zip(sims[0], idxs[0]):
+        if i < 0: 
+            continue
+        out.append({"student_id": _faiss_idmaps[kind][i], "similarity": float(sim)})
+    return out
+def search_similar_students(query_vec: np.ndarray, masked: bool, topk: int = 5):
+    table = 'student_face_embeddings_masked' if masked else 'student_face_embeddings_unmasked'
+    if USE_PGVECTOR:
+        res = pgvector_query(table, query_vec.astype('float32'), topk=topk)
+        # แปลง distance -> similarity คร่าว ๆ
+        for r in res:
+            r["similarity"] = 1.0 - float(r["distance"])
+        return res
+    if USE_FAISS:
+        return faiss_search(query_vec.astype('float32'), topk=topk, masked=masked)
+    return []
 # ==================== Motion Session Management ====================
 @app.put("/api/session/{session_id}/end")
 async def end_any_session(session_id: str):
@@ -4819,6 +5093,16 @@ async def save_face_embedding_to_db(
         return False
     
 
+def process_motion_capture_task(item: dict):
+    """
+    เรียกใช้ logic เดิมของคุณแบบ synchronous ใน worker
+    """
+    import asyncio
+    try:
+        asyncio.run(process_motion_triggered_background(item))
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 # ==================== Server Startup ====================
 
 if __name__ == "__main__":
