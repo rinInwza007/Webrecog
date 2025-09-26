@@ -1,5 +1,6 @@
 // ไฟล์: Myweb/src/LiveVideoStream.jsx
 import { useState, useRef, useEffect } from 'react'
+import { BACKEND_URL } from "./config";
 
 const LiveVideoStream = ({ 
   currentSession, 
@@ -27,7 +28,7 @@ const LiveVideoStream = ({
   })
 
   // FastAPI URL
-  const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
+    const FASTAPI_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
   // เริ่มกล้องเมื่อมี session ที่ active
   useEffect(() => {

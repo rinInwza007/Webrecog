@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { BACKEND_URL } from "./config";
 
 const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -19,7 +20,8 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
   const wsRef = useRef(null)
   const intervalRef = useRef(null)
 
-  const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
+  const FASTAPI_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+
 
   // Start video stream
   const startVideoStream = async () => {

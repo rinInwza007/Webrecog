@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import { useAuth } from './AuthContext'
+import { BACKEND_URL } from "./config";
 
 const FaceRegistration = ({ onComplete }) => {
   const [photos, setPhotos] = useState([])
@@ -13,7 +14,7 @@ const FaceRegistration = ({ onComplete }) => {
   const { user } = useAuth()
 
   // URL ของ FastAPI server - ปรับให้ตรงกับ server ของคุณ
-  const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
+  const FASTAPI_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files)
