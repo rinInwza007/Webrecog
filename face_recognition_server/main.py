@@ -34,8 +34,8 @@ from scipy.spatial.distance import cdist
 load_dotenv()
 
 # Configuration
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", 8000))
+HOST = os.getenv("HOST", "0.0.0.0")  
+PORT = int(os.getenv("PORT", 8080))
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.4))
 
@@ -67,10 +67,17 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "https://*.vercel.app",
+        "https://webrecog.vercel.app/",  # ใส่ domain จริงของ Vercel
+        "*"  # อนุญาตทุก origin (สำหรับ debug)
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # อนุญาต subdomain ของ Vercel
 )
 
 # Thread pool for processing
@@ -2490,6 +2497,15 @@ async def debug_class_data(class_id: str):
         }
         
 # ==================== Motion Detection API Endpoints ====================
+@app.get("/")
+async def root():
+    """Root endpoint for health check"""
+    return {
+        "status": "ok",
+        "message": "Motion Detection Attendance System API",
+        "version": "5.0.0-motion-detection",
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.on_event("startup")
 async def startup_event():
@@ -4405,6 +4421,11 @@ async def motion_system_health():
             "error": str(e),
             "system_type": "motion_detection_attendance"
         }
+        
+@app.options("/{full_path:path}")
+async def options_handler():
+    return {"message": "OK"}
+
 
 @app.get("/api/motion/system-status")
 async def get_motion_system_status():
@@ -4828,12 +4849,55 @@ async def save_face_embedding_to_db(
     except Exception as e:
         logger.error(f"❌ Error saving to database for motion detection: {e}")
         return False
-    
+
+@app.get("/api/test")
+async def test_connection():
+    """Test API connection"""
+    return {
+        "success": True,
+        "message": "API connection successful!",
+        "timestamp": datetime.now().isoformat(),
+        "server_info": {
+            "host": HOST,
+            "port": PORT,
+            "debug": DEBUG
+        }
+    }
+
+@app.get("/api/cors-test")
+async def cors_test():
+    """Test CORS headers"""
+    return {
+        "cors_test": "success",
+        "message": "CORS is working correctly",
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/supabase-test")
+async def test_supabase():
+    """Test Supabase connection"""
+    try:
+        result = supabase.table('users').select("count", count='exact').limit(1).execute()
+        return {
+            "supabase_connection": "success",
+            "message": "Supabase connection working",
+            "user_count": result.count if hasattr(result, 'count') else "unknown"
+        }
+    except Exception as e:
+        return {
+            "supabase_connection": "failed", 
+            "error": str(e)
+        }
 
 # ==================== Server Startup ====================
 
 if __name__ == "__main__":
     import uvicorn
+    
+    port = int(os.environ.get("PORT", 8080))
+    
+    print(f"🚀 Starting server on 0.0.0.0:{port}")
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")
     
     print("🎯 Starting Motion Detection Attendance System")
     print("=" * 60)
