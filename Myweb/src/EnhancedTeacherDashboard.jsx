@@ -4,6 +4,7 @@ import { supabase } from './supabaseClient'
 import ClassCodeDisplay from './ClassCodeDisplay'
 import LiveVideoStream from './LiveVideoStream'
 import ClassDetailView from './ClassDetailView' // เพิ่ม import
+import config from './config'
 
 const EnhancedTeacherDashboard = () => {
   const { user, signOut } = useAuth()
@@ -45,7 +46,7 @@ const EnhancedTeacherDashboard = () => {
   const [cameraError, setCameraError] = useState('')
 
   // FastAPI URL
-  const FASTAPI_URL = import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000'
+  const FASTAPI_URL = config.BACKEND_URL
 
   // Function สำหรับเปิด Class Detail View
   const handleClassClick = (classData) => {
