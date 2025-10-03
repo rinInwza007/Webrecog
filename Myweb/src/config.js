@@ -9,6 +9,10 @@ const config = {
   // API timeout settings
   API_TIMEOUT: 30000, // 30 seconds
 }
+
+// เพิ่ม export default
+export default config;
+
 export const apiRequest = async (endpoint, options = {}) => {
   const baseURL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const url = `${baseURL}${endpoint}`;
