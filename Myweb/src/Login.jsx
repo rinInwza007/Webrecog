@@ -17,8 +17,12 @@ const Login = ({ onSwitchToRegister }) => {
       const { error } = await signIn(email, password)
       if (error) {
         setError(error.message)
+      return
       }
+      console.log('Login success:', email) 
+
     } catch (err) {
+      console.error('Login error:', err)
       setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
     } finally {
       setLoading(false)

@@ -285,9 +285,9 @@ const ClassDetailView = ({ classData, onBack }) => {
 
     attendanceData.recentAttendance.forEach(record => {
       const dateStr = new Date(record.check_in_time).toDateString()
-      if (last7Days.hasOwnProperty(dateStr)) {
-        last7Days[dateStr]++
-      }
+      if (Object.prototype.hasOwnProperty.call(last7Days, dateStr)) {
+    last7Days[dateStr]++
+}
     })
 
     return Object.entries(last7Days).map(([date, count]) => ({

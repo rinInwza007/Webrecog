@@ -9,7 +9,6 @@ const FaceRegistration = ({ onComplete }) => {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [currentStep, setCurrentStep] = useState(1)
   const [uploadProgress, setUploadProgress] = useState(0)
   const fileInputRef = useRef(null)
   const { user } = useAuth()
@@ -100,13 +99,14 @@ const FaceRegistration = ({ onComplete }) => {
       
       // เพิ่มรูปภาพทั้งหมด
       photos.forEach((photo, index) => {
+        console.log(`Appending photo ${index + 1}:`, photo.file.name, `(${(photo.size / 1024 / 1024).toFixed(2)} MB)`)
         formData.append('images', photo.file)
       })
       
       setUploadProgress(50)
 
       // ส่งข้อมูลไปยัง FastAPI server
-      const response = await fetch(`${FASTAPI_URL}/api/face/enroll`, {
+      const response = await fetch(`${FASTAPI_URL}/api/face/enroll-advanced`, {
         method: 'POST',
         body: formData,
       })
@@ -204,6 +204,7 @@ const FaceRegistration = ({ onComplete }) => {
         setError('⚠️ เซิร์ฟเวอร์ Face Recognition ไม่พร้อมใช้งาน')
       }
     } catch (error) {
+      console.error('Server connection error:', error)
       setError(`❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้: ${FASTAPI_URL}`)
     }
   }

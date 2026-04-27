@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect} from 'react'
 import config from './config'
 const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -519,9 +519,9 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
     </div>
   </div>
 )}
-{attendance.photoUrl && (
+{attendanceList.length > 0 && attendanceList[attendanceList.length - 1].photoUrl && (
   <img 
-    src={attendance.photoUrl} 
+    src={attendanceList[attendanceList.length - 1].photoUrl} 
     alt="snapshot" 
     className="w-16 h-16 object-cover rounded-lg border" 
   />
