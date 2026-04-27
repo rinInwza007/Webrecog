@@ -188,6 +188,90 @@ class CacheManager:
             logger.info("All caches cleared")
 
 
+class EmbeddingIndexManager:
+    """Manage preloaded embeddings for fast lookup"""
+    
+    def __init__(self, supabase_mgr: SupabaseStateManager = None):
+        self.supabase_mgr = supabase_mgr
+        self.embeddings = {}  # {student_id: embedding}
+        self.index_lock = threading.Lock()
+        self.is_loaded = False
+    
+    def preload_embeddings(self, class_id: str = None) -> int:
+        """Preload all active embeddings from database"""
+        try:
+            with self.index_lock:
+                if not self.supabase_mgr:
+                    logger.warning("Supabase manager not available for preloading")
+                    return 0
+                
+                logger.info("🔄 Starting embedding preload...")
+                
+                # Get all active embeddings
+                query = self.supabase_mgr.get_client().table('student_face_embeddings')\
+                    .select('student_id, embedding_vector')
+                
+                if class_id:
+                    # Filter by class if provided (requires join in real scenario)
+                    logger.info(f"📦 Preloading embeddings for class: {class_id}")
+                else:
+                    query = query.eq('is_active', True)
+                
+                result = query.execute()
+                
+                count = 0
+                if result.data:
+                    for record in result.data:
+                        try:
+                            student_id = record.get('student_id')
+                            embedding_str = record.get('embedding_vector')
+                            
+                            if student_id and embedding_str:
+                                # Parse embedding (stored as JSON string)
+                                embedding = json.loads(embedding_str) if isinstance(embedding_str, str) else embedding_str
+                                self.embeddings[student_id] = embedding
+                                count += 1
+                        except Exception as e:
+                            logger.debug(f"Error preloading embedding for student: {e}")
+                            continue
+                
+                self.is_loaded = True
+                logger.info(f"✅ Preloaded {count} embeddings from database")
+                return count
+                
+        except Exception as e:
+            logger.error(f"Error preloading embeddings: {e}")
+            return 0
+    
+    def get_embedding(self, student_id: str) -> Optional[List]:
+        """Get preloaded embedding"""
+        with self.index_lock:
+            return self.embeddings.get(student_id)
+    
+    def add_embedding(self, student_id: str, embedding: List) -> None:
+        """Add embedding to index"""
+        with self.index_lock:
+            self.embeddings[student_id] = embedding
+            logger.debug(f"Added embedding for {student_id} to index")
+    
+    def clear_index(self) -> None:
+        """Clear all preloaded embeddings"""
+        with self.index_lock:
+            self.embeddings.clear()
+            self.is_loaded = False
+            logger.info("Embedding index cleared")
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get index statistics"""
+        with self.index_lock:
+            return {
+                'loaded_count': len(self.embeddings),
+                'is_loaded': self.is_loaded,
+                'student_ids': list(self.embeddings.keys())[:10]  # First 10 for preview
+            }
+
+
 # Global instances
 supabase_manager = SupabaseStateManager()
 cache_manager = CacheManager()
+embedding_index_manager = EmbeddingIndexManager(supabase_manager)
