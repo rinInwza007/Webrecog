@@ -18,6 +18,114 @@ from ai_module import process_faces_with_advanced_matching, AdvancedFaceEmbeddin
 logger = logging.getLogger(__name__)
 
 
+class FrameSkippingManager:
+    """Intelligent frame skipping to optimize processing"""
+    
+    def __init__(self):
+        self.frame_counter = 0
+        self.skip_pattern = {
+            'high_motion': 1,      # Process every frame
+            'medium_motion': 2,    # Process every 2nd frame
+            'low_motion': 4,       # Process every 4th frame
+            'stable': 6            # Process every 6th frame
+        }
+        self.lock = threading.Lock()
+    
+    def should_process_frame(self, motion_strength: float, processing_time_ms: float) -> bool:
+        """Determine if frame should be processed based on motion and load"""
+        with self.lock:
+            self.frame_counter += 1
+            
+            # Adaptive skipping based on motion strength and processing time
+            if motion_strength > 0.7:
+                skip_interval = self.skip_pattern['high_motion']
+            elif motion_strength > 0.4:
+                skip_interval = self.skip_pattern['medium_motion']
+            elif motion_strength > 0.2:
+                skip_interval = self.skip_pattern['low_motion']
+            else:
+                skip_interval = self.skip_pattern['stable']
+            
+            # Increase skipping if system is overloaded
+            if processing_time_ms > 500:  # 500ms is high load
+                skip_interval = min(skip_interval * 2, 8)
+                logger.debug(f"⚠️  High load detected ({processing_time_ms}ms), increasing skip interval to {skip_interval}")
+            
+            should_process = (self.frame_counter % skip_interval) == 0
+            
+            if should_process:
+                logger.debug(f"✅ Processing frame #{self.frame_counter} (skip={skip_interval})")
+            else:
+                logger.debug(f"⏭️  Skipping frame #{self.frame_counter}")
+            
+            return should_process
+    
+    def reset(self):
+        """Reset counter"""
+        with self.lock:
+            self.frame_counter = 0
+
+
+class PerUserCooldownManager:
+    """Manage per-student attendance cooldown to prevent duplicate records"""
+    
+    def __init__(self):
+        self.user_cooldowns = {}  # {'student_id': last_record_time}
+        self.default_cooldown_minutes = 5
+        self.lock = threading.Lock()
+    
+    def can_record_attendance(self, student_id: str, cooldown_minutes: int = None) -> bool:
+        """Check if student can have attendance recorded"""
+        with self.lock:
+            if cooldown_minutes is None:
+                cooldown_minutes = self.default_cooldown_minutes
+            
+            if student_id not in self.user_cooldowns:
+                self.user_cooldowns[student_id] = datetime.now()
+                logger.info(f"👤 New student tracked: {student_id}")
+                return True
+            
+            last_record = self.user_cooldowns[student_id]
+            elapsed = (datetime.now() - last_record).total_seconds() / 60
+            
+            if elapsed >= cooldown_minutes:
+                self.user_cooldowns[student_id] = datetime.now()
+                logger.info(f"✅ Cooldown expired for {student_id} ({elapsed:.1f}min elapsed)")
+                return True
+            else:
+                logger.debug(f"⏸️  Cooldown active for {student_id} ({cooldown_minutes - elapsed:.1f}min remaining)")
+                return False
+    
+    def reset_user(self, student_id: str):
+        """Reset cooldown for specific user"""
+        with self.lock:
+            if student_id in self.user_cooldowns:
+                del self.user_cooldowns[student_id]
+                logger.debug(f"🔄 Cooldown reset for {student_id}")
+    
+    def get_remaining_cooldown(self, student_id: str, cooldown_minutes: int = None) -> float:
+        """Get remaining cooldown time in minutes"""
+        with self.lock:
+            if cooldown_minutes is None:
+                cooldown_minutes = self.default_cooldown_minutes
+            
+            if student_id not in self.user_cooldowns:
+                return 0
+            
+            last_record = self.user_cooldowns[student_id]
+            elapsed = (datetime.now() - last_record).total_seconds() / 60
+            remaining = max(0, cooldown_minutes - elapsed)
+            
+            return remaining
+    
+    def clear_all(self):
+        """Clear all cooldowns"""
+        with self.lock:
+            self.user_cooldowns.clear()
+            logger.info("🗑️  All user cooldowns cleared")
+
+
+
 class MotionDetectionProcessor:
     """Handle adaptive motion threshold and processing configuration"""
     
@@ -425,3 +533,5 @@ motion_processor = MotionDetectionProcessor()
 motion_session_manager = MotionSessionManager()
 motion_priority_queue = MotionPriorityQueue()
 motion_processing_service = MotionProcessingService()
+frame_skipper = FrameSkippingManager()
+user_cooldown_manager = PerUserCooldownManager()

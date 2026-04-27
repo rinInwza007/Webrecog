@@ -19,19 +19,23 @@ import uuid
 import asyncio
 
 # Import from layers
-from state_module import supabase_manager, cache_manager
+from state_module import supabase_manager, cache_manager, embedding_index_manager
 from ai_module import (
     FaceEmbeddingProcessor,
     SimilarityCalculator,
     AdvancedFaceEmbeddingManager,
-    process_faces_with_advanced_matching
+    process_faces_with_advanced_matching,
+    FaceTracker,
+    FAISSEmbeddingIndex
 )
 from service_module import (
     motion_processor,
     motion_session_manager,
     motion_priority_queue,
     motion_processing_service,
-    AttendanceRecordingService
+    AttendanceRecordingService,
+    frame_skipper,
+    user_cooldown_manager
 )
 
 load_dotenv()
@@ -151,17 +155,24 @@ async def root():
     }
 
 @app.post("/api/session/start-motion-detection")
-async def start_motion_detection(request: MotionSessionRequest):
+async def start_motion_detection(
+    class_id: str = Form(...),
+    teacher_email: str = Form(...),
+    duration_hours: int = Form(2),
+    motion_threshold: float = Form(0.1),
+    cooldown_seconds: int = Form(30),
+    on_time_limit_minutes: int = Form(30)
+):
     """Start motion detection session"""
     try:
         session_id = str(uuid.uuid4())
         
         session_config = {
-            'class_id': request.class_id,
-            'teacher_email': request.teacher_email,
-            'motion_threshold': request.motion_threshold,
-            'cooldown_seconds': request.cooldown_seconds,
-            'on_time_limit_minutes': request.on_time_limit_minutes,
+            'class_id': class_id,
+            'teacher_email': teacher_email,
+            'motion_threshold': motion_threshold,
+            'cooldown_seconds': cooldown_seconds,
+            'on_time_limit_minutes': on_time_limit_minutes,
             'max_snapshots_per_hour': MAX_SNAPSHOTS_PER_HOUR,
             'face_threshold': FACE_THRESHOLD
         }
@@ -172,30 +183,30 @@ async def start_motion_detection(request: MotionSessionRequest):
         # Save to database
         session_data = {
             'id': session_id,
-            'class_id': request.class_id,
-            'teacher_email': request.teacher_email,
+            'class_id': class_id,
+            'teacher_email': teacher_email,
             'start_time': datetime.now().isoformat(),
-            'end_time': (datetime.now() + timedelta(hours=request.duration_hours)).isoformat(),
-            'on_time_limit_minutes': request.on_time_limit_minutes,
+            'end_time': (datetime.now() + timedelta(hours=duration_hours)).isoformat(),
+            'on_time_limit_minutes': on_time_limit_minutes,
             'status': 'active'
         }
         
         supabase_manager.get_client().table('motion_sessions').insert(session_data).execute()
         
-        enrolled_students = await get_enrolled_students_for_class(request.class_id)
+        enrolled_students = await get_enrolled_students_for_class(class_id)
         
         return {
             "success": True,
             "session_id": session_id,
-            "class_id": request.class_id,
-            "teacher_email": request.teacher_email,
+            "class_id": class_id,
+            "teacher_email": teacher_email,
             "enrolled_students": enrolled_students,
             "enrolled_count": len(enrolled_students),
             "start_time": datetime.now().isoformat(),
             "motion_settings": {
-                "threshold": request.motion_threshold,
-                "cooldown_seconds": request.cooldown_seconds,
-                "on_time_limit_minutes": request.on_time_limit_minutes
+                "threshold": motion_threshold,
+                "cooldown_seconds": cooldown_seconds,
+                "on_time_limit_minutes": on_time_limit_minutes
             }
         }
         
@@ -299,6 +310,31 @@ async def process_motion_snapshot(
         
     except Exception as e:
         logger.error(f"Error processing motion snapshot: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/motion/manual-capture")
+async def manual_capture_motion(
+    session_id: str = Form(...),
+    image_data: Optional[UploadFile] = File(None)
+):
+    """Manually trigger face capture/analysis"""
+    try:
+        # Check if session exists
+        session_stats = motion_session_manager.get_session_stats(session_id)
+        if not session_stats:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        logger.info(f"📸 Manual capture triggered for session: {session_id}")
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+            "message": "Manual capture processed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in manual capture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/face/enroll-advanced")

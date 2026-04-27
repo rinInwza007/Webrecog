@@ -12,8 +12,146 @@ import json
 from sklearn.preprocessing import normalize
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial.distance import cdist
+import faiss
+import threading
 
 logger = logging.getLogger(__name__)
+
+
+class FaceTracker:
+    """Track faces across frames using centroid tracking"""
+    
+    def __init__(self, max_distance=50, max_disappeared=10):
+        self.next_object_id = 0
+        self.objects = {}
+        self.disappeared = {}
+        self.max_distance = max_distance
+        self.max_disappeared = max_disappeared
+    
+    def register(self, centroid):
+        """Register new face with ID"""
+        self.objects[self.next_object_id] = centroid
+        self.disappeared[self.next_object_id] = 0
+        self.next_object_id += 1
+    
+    def deregister(self, object_id):
+        """Deregister face"""
+        del self.objects[object_id]
+        del self.disappeared[object_id]
+    
+    def update(self, rects):
+        """Update tracking with new face rectangles"""
+        if len(rects) == 0:
+            for object_id in list(self.disappeared.keys()):
+                self.disappeared[object_id] += 1
+                if self.disappeared[object_id] > self.max_disappeared:
+                    self.deregister(object_id)
+            return self.objects
+        
+        input_centroids = np.zeros((len(rects), 2), dtype="int")
+        for (i, (start_x, start_y, end_x, end_y)) in enumerate(rects):
+            cx = (start_x + end_x) // 2
+            cy = (start_y + end_y) // 2
+            input_centroids[i] = (cx, cy)
+        
+        if len(self.objects) == 0:
+            for i in range(0, len(input_centroids)):
+                self.register(input_centroids[i])
+        else:
+            object_ids = list(self.objects.keys())
+            object_centroids = list(self.objects.values())
+            
+            distance = np.zeros((len(object_centroids), len(input_centroids)))
+            for i in range(len(object_centroids)):
+                for j in range(len(input_centroids)):
+                    distance[i][j] = np.linalg.norm(np.array(object_centroids[i]) - input_centroids[j])
+            
+            rows = distance.min(axis=1).argsort()
+            cols = distance.argmin(axis=1)[rows]
+            
+            used_rows = set()
+            used_cols = set()
+            
+            for (row, col) in zip(rows, cols):
+                if row in used_rows or col in used_cols:
+                    continue
+                if distance[row, col] > self.max_distance:
+                    continue
+                
+                object_id = object_ids[row]
+                self.objects[object_id] = input_centroids[col]
+                self.disappeared[object_id] = 0
+                
+                used_rows.add(row)
+                used_cols.add(col)
+            
+            unused_rows = set(range(0, distance.shape[0])).difference(used_rows)
+            unused_cols = set(range(0, distance.shape[1])).difference(used_cols)
+            
+            if distance.shape[0] >= distance.shape[1]:
+                for row in unused_rows:
+                    object_id = object_ids[row]
+                    self.disappeared[object_id] += 1
+                    if self.disappeared[object_id] > self.max_disappeared:
+                        self.deregister(object_id)
+            else:
+                for col in unused_cols:
+                    self.register(input_centroids[col])
+        
+        return self.objects
+
+
+class FAISSEmbeddingIndex:
+    """Fast similarity search using FAISS"""
+    
+    def __init__(self, embedding_dim=128):
+        self.embedding_dim = embedding_dim
+        self.index = faiss.IndexFlatL2(embedding_dim)
+        self.id_map = {}
+        self.next_id = 0
+        self.lock = threading.Lock()
+    
+    def add_embedding(self, student_id: str, embedding: np.ndarray) -> int:
+        """Add embedding to index"""
+        with self.lock:
+            embedding_normalized = embedding.reshape(1, -1).astype('float32')
+            self.index.add(embedding_normalized)
+            self.id_map[self.next_id] = student_id
+            self.next_id += 1
+            return self.next_id - 1
+    
+    def search(self, embedding: np.ndarray, k=5, threshold=0.6) -> List[Dict]:
+        """Search for similar embeddings"""
+        try:
+            with self.lock:
+                if self.index.ntotal == 0:
+                    return []
+                
+                embedding_normalized = embedding.reshape(1, -1).astype('float32')
+                distances, indices = self.index.search(embedding_normalized, k)
+                
+                results = []
+                for idx, distance in zip(indices[0], distances[0]):
+                    # Convert L2 distance to similarity score
+                    similarity = 1 / (1 + distance)
+                    if similarity >= threshold:
+                        results.append({
+                            'student_id': self.id_map.get(idx, 'unknown'),
+                            'similarity': float(similarity),
+                            'distance': float(distance)
+                        })
+                
+                return sorted(results, key=lambda x: x['similarity'], reverse=True)
+        except Exception as e:
+            logger.error(f"Error searching FAISS index: {e}")
+            return []
+    
+    def clear(self):
+        """Clear index"""
+        with self.lock:
+            self.index.reset()
+            self.id_map.clear()
+            self.next_id = 0
 
 
 class FaceEmbeddingProcessor:
@@ -39,14 +177,21 @@ class FaceEmbeddingProcessor:
             return embedding
     
     @staticmethod
-    def detect_faces_in_image(image_array: np.ndarray, model: str = "hog") -> List[Tuple]:
+    def detect_faces_in_image(image_array: np.ndarray, model: str = "auto", motion_strength: float = 0.5) -> List[Tuple]:
         """
-        Detect faces in image using specified model
-        model: "hog" (fast) or "cnn" (accurate)
+        Detect faces in image with dynamic model selection
+        model: "hog" (fast), "cnn" (accurate), or "auto" (dynamic)
+        motion_strength: 0-1, affects model selection when auto
         """
         try:
             if image_array is None or image_array.size == 0:
                 return []
+            
+            # Dynamic model selection
+            if model == "auto":
+                # High motion -> use fast HOG; Low motion -> use accurate CNN
+                model = "cnn" if motion_strength < 0.3 else "hog"
+                logger.debug(f"🔄 Dynamic model switch: motion={motion_strength:.2f} → {model}")
             
             # Optimize image if too large
             height, width = image_array.shape[:2]
@@ -82,6 +227,52 @@ class FaceEmbeddingProcessor:
         except Exception as e:
             logger.error(f"Error extracting encodings: {e}")
             return []
+    
+    @staticmethod
+    def extract_face_encodings_lazy(image_array: np.ndarray, face_locations: List[Tuple],
+                                   quality_threshold: float = 0.3, num_jitters: int = 1) -> Dict[str, any]:
+        """
+        Lazy face encoding: Check quality first, then only encode good faces
+        Returns: {'encodings': [...], 'qualities': [...], 'skipped': count}
+        """
+        try:
+            if not face_locations:
+                return {'encodings': [], 'qualities': [], 'skipped': 0}
+            
+            qualities = []
+            valid_locations = []
+            valid_indices = []
+            skipped = 0
+            
+            # First pass: quality filtering
+            for i, location in enumerate(face_locations):
+                quality = FaceEmbeddingProcessor.calculate_face_quality(image_array, location)
+                overall_quality = quality.get('overall_quality', 0)
+                
+                if overall_quality >= quality_threshold:
+                    valid_locations.append(location)
+                    qualities.append(overall_quality)
+                    valid_indices.append(i)
+                else:
+                    skipped += 1
+                    logger.debug(f"⏭️  Skipped low-quality face (quality={overall_quality:.2f})")
+            
+            # Second pass: encoding only high-quality faces
+            if valid_locations:
+                encodings = face_recognition.face_encodings(image_array, valid_locations, num_jitters=num_jitters)
+                logger.info(f"🧠 Lazy extracted {len(encodings)} faces (quality filter skipped {skipped})")
+                return {
+                    'encodings': encodings,
+                    'qualities': qualities,
+                    'indices': valid_indices,
+                    'skipped': skipped
+                }
+            
+            return {'encodings': [], 'qualities': [], 'indices': [], 'skipped': skipped}
+            
+        except Exception as e:
+            logger.error(f"Error in lazy encoding: {e}")
+            return {'encodings': [], 'qualities': [], 'indices': [], 'skipped': 0}
     
     @staticmethod
     def calculate_face_quality(image_array: np.ndarray, face_location: Tuple) -> Dict[str, float]:
