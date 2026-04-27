@@ -56,16 +56,22 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
 
       // ตรวจสอบว่า school_id ซ้ำหรือไม่
       const { data: existingUser, error: checkError } = await supabase
-        .from('users')
-        .select('school_id')
-        .eq('school_id', schoolId)
-        .single()
+  .from('users')
+  .select('school_id')
+  .eq('school_id', schoolId)
+  .maybeSingle()
 
-      if (existingUser) {
-        setError('รหัสนักเรียน/อาจารย์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น')
-        setLoading(false)
-        return
-      }
+if (checkError) {
+  setError('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล')
+  setLoading(false)
+  return
+}
+
+if (existingUser) {
+  setError('รหัสนักเรียน/อาจารย์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น')
+  setLoading(false)
+  return
+}
 
       // Sign up with Supabase Auth
       const { data, error: signUpError } = await signUp(

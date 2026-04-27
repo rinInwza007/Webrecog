@@ -3,8 +3,8 @@ const config = {
   BACKEND_URL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000',
   
   // Supabase configuration
-  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://cykbwnxcvdszxlypzucy.supabase.co',
-  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5a2J3bnhjdmRzenhseXB6dWN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzIwMDEwMDMsImV4cCI6MjA0NzU3NzAwM30.t51vDsflnqzKVic9tZ_uFpiaS_6RO3J3gOeMJdm0lvo',
+  SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL="https://xcnyynemxwhementtkdl.supabase.co",
+  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_zcTwxxNxmCmOtzQBt7xQjg_aTmixZzs",
   
   // API timeout settings
   API_TIMEOUT: 30000, // 30 seconds

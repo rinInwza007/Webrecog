@@ -35,7 +35,7 @@
     "start:prod": "concurrently \"cd face_recognition_server && uvicorn main:app --host 0.0.0.0 --port 8000\" \"npm run preview:frontend\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.57.2",
+    "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/vite": "^4.1.13",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
