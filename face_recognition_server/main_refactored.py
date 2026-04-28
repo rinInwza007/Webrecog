@@ -136,7 +136,26 @@ async def get_enrolled_students_for_class(class_id: str) -> List[str]:
     except Exception as e:
         logger.error(f"Error getting enrolled students: {e}")
         return []
-
+    
+@app.on_event("startup")
+async def startup_event():
+    """Load active sessions from DB on startup"""
+    try:
+        result = supabase_manager.get_client().table('attendance_sessions')\
+            .select('*').eq('status', 'active').execute()
+        
+        if result.data:
+            for session in result.data:
+                motion_session_manager.create_session(session['id'], {
+                    'class_id': session.get('class_id'),
+                    'teacher_email': session.get('teacher_email'),
+                    'on_time_limit_minutes': session.get('on_time_limit_minutes', 30),
+                    'max_snapshots_per_hour': MAX_SNAPSHOTS_PER_HOUR,
+                    'face_threshold': FACE_THRESHOLD
+                })
+            logger.info(f"✅ Restored {len(result.data)} active sessions from DB")
+    except Exception as e:
+        logger.warning(f"Could not restore sessions: {e}")
 # ==================== API Endpoints ====================
 
 @app.get("/")
@@ -193,7 +212,7 @@ async def start_motion_detection(
         
         db_save_success = False
         try:
-            supabase_manager.get_client().table('motion_sessions').insert(session_data).execute()
+            supabase_manager.get_client().table('attendance_sessions').insert(session_data).execute()
             db_save_success = True
             logger.info(f"✅ Motion session saved to database: {session_id}")
         except Exception as db_error:
@@ -264,7 +283,7 @@ async def process_motion_snapshot(
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Get session data from DB
-        session_result = supabase_manager.get_client().table('motion_sessions').select('*')\
+        session_result = supabase_manager.get_client().table('attendance_sessions').select('*')\
             .eq('id', session_id).single().execute()
         
         if not session_result.data:
@@ -585,7 +604,7 @@ async def end_motion_session(session_id: str):
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Update session in database
-        supabase_manager.get_client().table('motion_sessions').update({
+        supabase_manager.get_client().table('attendance_sessions').update({
             'status': 'ended',
             'end_time': datetime.now().isoformat()
         }).eq('id', session_id).execute()
@@ -609,6 +628,11 @@ async def end_motion_session(session_id: str):
     except Exception as e:
         logger.error(f"Error ending motion session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.put("/api/session/{session_id}/end")
+async def end_session(session_id: str):
+    """End session (alias for end-motion)"""
+    return await end_motion_session(session_id)
 
 @app.get("/api/system/advanced-status")
 async def get_system_status():
@@ -687,11 +711,11 @@ async def get_motion_session_live_stats(session_id: str):
             "success": True,
             "session_id": session_id,
             "session_type": "motion_detection",
-            "motion_events": stats['motion_events'],
-            "snapshots_taken": stats['snapshots_taken'],
-            "attendance_records": stats['attendance_records'],
-            "quality_score": stats.get('quality_score', 0.0),
-            "latest_timestamp": stats.get('latest_timestamp', datetime.now().isoformat())
+            "motion_events": stats.get('motion_events', 0),        # เปลี่ยน
+            "snapshots_taken": stats.get('snapshots_taken', 0),    # เปลี่ยน
+            "attendance_records": stats.get('attendance_records', 0),  # เปลี่ยน
+            "quality_score": stats.get('quality_score', 0.0),      # เปลี่ยน
+            "latest_timestamp": stats.get('latest_timestamp', datetime.now().isoformat())  # เปลี่ยน
         }
         
     except Exception as e:
@@ -721,7 +745,7 @@ async def start_realtime_stream(
         )
         
         # Save to database
-        supabase_manager.get_client().table('motion_sessions').insert({
+        supabase_manager.get_client().table('attendance_sessions').insert({
             'id': session_id,
             'class_id': class_id,
             'teacher_email': teacher_email,
@@ -759,7 +783,7 @@ async def stop_realtime_stream(session_id: str):
             raise HTTPException(status_code=404, detail="Session not found")
         
         # Update session in database
-        supabase_manager.get_client().table('motion_sessions').update({
+        supabase_manager.get_client().table('attendance_sessions').update({
             'status': 'ended',
             'end_time': datetime.now().isoformat()
         }).eq('id', session_id).execute()
@@ -772,8 +796,8 @@ async def stop_realtime_stream(session_id: str):
         return {
             "success": True,
             "session_id": session_id,
-            "total_snapshots": stats['snapshots_taken'],
-            "total_attendance_records": stats['attendance_records'],
+            "total_snapshots": stats.get('snapshots_taken', 0),
+            "total_attendance_records": stats.get('attendance_records', 0),  # เปลี่ยน
             "timestamp": datetime.now().isoformat()
         }
         
@@ -837,4 +861,18 @@ if __name__ == "__main__":
     logger.info(f"📐 Architecture: AI Layer | Logic Layer | State Layer")
     logger.info(f"📍 Host: {HOST}, Port: {PORT}")
     
-    uvicorn.run(app, host=HOST, port=PORT, debug=DEBUG)
+    if DEBUG:
+        # reload mode ต้องใช้ import string
+        uvicorn.run(
+            "main_refactored:app",
+            host=HOST,
+            port=PORT,
+            reload=True
+        )
+    else:
+        # production mode ใช้ app object ได้เลย
+        uvicorn.run(
+            app,
+            host=HOST,
+            port=PORT
+        )

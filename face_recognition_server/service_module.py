@@ -229,6 +229,7 @@ class MotionSessionManager:
                 'stats': {
                     'motion_events': 0,
                     'snapshots_taken': 0,
+                    'attendance_records': 0, 
                     'last_snapshot': None,
                     'motion_history': [],
                     'hourly_events': {}
