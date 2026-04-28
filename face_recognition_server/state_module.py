@@ -11,26 +11,54 @@ from supabase import Client, create_client
 import os
 from dotenv import load_dotenv
 
+
 logger = logging.getLogger(__name__)
 
 # Load environment
 load_dotenv()
 
+# Try to import offline mode for when Supabase is unavailable
+try:
+    from offline_mode import get_offline_client, OfflineSupabaseClient
+    OFFLINE_MODE_AVAILABLE = True
+except ImportError:
+    OFFLINE_MODE_AVAILABLE = False
+    OfflineSupabaseClient = None
+
 class SupabaseStateManager:
-    """Handle all Supabase database operations"""
+    """Handle all Supabase database operations with fallback to offline mode"""
     
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_ANON_KEY")
+        self.offline_mode = False
         
         if not self.supabase_url or not self.supabase_key:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
         
-        self.client: Client = create_client(self.supabase_url, self.supabase_key)
+        try:
+            self.client: Client = create_client(self.supabase_url, self.supabase_key)
+            logger.info("✅ Connected to Supabase")
+        except Exception as e:
+            error_msg = str(e)
+            if "getaddrinfo failed" in error_msg or "Connection" in error_msg or "resolve" in error_msg:
+                logger.warning(f"⚠️  Supabase connection failed: {error_msg}")
+                logger.warning("🔌 Switching to OFFLINE MODE - using in-memory storage")
+                if OFFLINE_MODE_AVAILABLE:
+                    self.client = get_offline_client()
+                    self.offline_mode = True
+                else:
+                    raise ValueError("Cannot connect to Supabase and offline mode not available")
+            else:
+                raise
     
-    def get_client(self) -> Client:
-        """Get Supabase client"""
+    def get_client(self):
+        """Get Supabase client (or offline mock client)"""
         return self.client
+    
+    def is_offline_mode(self) -> bool:
+        """Check if running in offline mode"""
+        return self.offline_mode
     
     # ==================== Student Embeddings ====================
     
