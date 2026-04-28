@@ -180,7 +180,7 @@ async def start_motion_detection(
         # Create session in service
         motion_session_manager.create_session(session_id, session_config)
         
-        # Save to database
+        # Save to database (with error handling for network issues)
         session_data = {
             'id': session_id,
             'class_id': class_id,
@@ -191,7 +191,16 @@ async def start_motion_detection(
             'status': 'active'
         }
         
-        supabase_manager.get_client().table('motion_sessions').insert(session_data).execute()
+        db_save_success = False
+        try:
+            supabase_manager.get_client().table('motion_sessions').insert(session_data).execute()
+            db_save_success = True
+            logger.info(f"✅ Motion session saved to database: {session_id}")
+        except Exception as db_error:
+            # Log the error but don't fail the session creation
+            logger.warning(f"⚠️  Database save failed (session still created in-memory): {str(db_error)}")
+            if "getaddrinfo failed" in str(db_error) or "Connection" in str(db_error):
+                logger.warning("🌐 Network/DNS issue detected - running in offline mode")
         
         enrolled_students = await get_enrolled_students_for_class(class_id)
         
@@ -207,12 +216,22 @@ async def start_motion_detection(
                 "threshold": motion_threshold,
                 "cooldown_seconds": cooldown_seconds,
                 "on_time_limit_minutes": on_time_limit_minutes
-            }
+            },
+            "database_status": "online" if db_save_success else "offline"
         }
         
     except Exception as e:
-        logger.error(f"Error starting motion detection: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        logger.error(f"❌ Error starting motion detection: {error_msg}")
+        
+        # Provide helpful error messages
+        if "getaddrinfo failed" in error_msg or "Connection" in error_msg:
+            raise HTTPException(
+                status_code=503,
+                detail="Database connection error. Supabase may be unreachable. Check SUPABASE_URL and network connectivity."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=error_msg)
 
 @app.post("/api/motion/snapshot")
 async def process_motion_snapshot(
@@ -632,18 +651,23 @@ async def get_system_status():
 async def health_check():
     """Health check endpoint"""
     try:
-        # Test basic connectivity
+        # Check if running in offline mode
+        database_status = "offline" if supabase_manager.is_offline_mode() else "online"
+        
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "version": "6.0.0-refactored"
+            "version": "6.0.0-refactored",
+            "database_status": database_status,
+            "mode": "offline (in-memory)" if database_status == "offline" else "online (Supabase)"
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
             "error": str(e),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "database_status": "unknown"
         }
 
 # ==================== Motion Session Live Stats Alias ====================
