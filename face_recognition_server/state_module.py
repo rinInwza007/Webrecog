@@ -101,14 +101,46 @@ class SupabaseStateManager:
     # ==================== Students ====================
     
     def get_enrolled_students_for_class(self, class_id: str) -> List[str]:
-        """Get list of enrolled student IDs for a class"""
+        """Get list of enrolled student school_ids for a class (for face recognition matching)"""
         try:
-            result = self.client.table('enrollments').select('student_id')\
+            # Query the optimized view to get school_ids for faster face recognition
+            result = self.client.table('v_student_class_enrollment').select('school_id')\
                 .eq('class_id', class_id)\
+                .eq('status', 'active')\
                 .execute()
-            return [r['student_id'] for r in result.data] if result.data else []
+            
+            school_ids = [r['school_id'] for r in result.data] if result.data else []
+            
+            if school_ids:
+                logger.info(f"✅ Found {len(school_ids)} active students for class {class_id}")
+            else:
+                logger.warning(f"⚠️  No enrolled students found for class {class_id}")
+            
+            return school_ids
+            
         except Exception as e:
             logger.error(f"Error getting enrolled students for class {class_id}: {e}")
+            # Fallback to direct table query if view doesn't exist yet
+            try:
+                result = self.client.table('student_enrollments').select('student_id')\
+                    .eq('class_id', class_id)\
+                    .eq('status', 'active')\
+                    .execute()
+                
+                if result.data:
+                    # Need to fetch school_ids for each student_id
+                    school_ids = []
+                    for record in result.data:
+                        user = self.client.table('users').select('school_id')\
+                            .eq('user_id', record['student_id'])\
+                            .single()\
+                            .execute()
+                        if user.data and user.data.get('school_id'):
+                            school_ids.append(user.data['school_id'])
+                    return school_ids
+            except Exception as e2:
+                logger.error(f"Fallback query also failed: {e2}")
+            
             return []
     
     def get_student_email(self, student_id: str) -> Optional[str]:

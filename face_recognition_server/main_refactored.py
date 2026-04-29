@@ -20,6 +20,7 @@ import asyncio
 
 # Import from layers
 from state_module import supabase_manager, cache_manager, embedding_index_manager
+from database_view_helper import DatabaseViewHelper
 from ai_module import (
     FaceEmbeddingProcessor,
     SimilarityCalculator,
@@ -75,6 +76,9 @@ app.add_middleware(
     allow_origin_regex=r"https://.*\.vercel\.app",
 )
 
+# Initialize database view helper
+db_view_helper = DatabaseViewHelper(supabase_manager.get_client())
+
 # ==================== Pydantic Models ====================
 
 class MotionSessionRequest(BaseModel):
@@ -94,29 +98,16 @@ class MotionSnapshotRequest(BaseModel):
 # ==================== Helper Functions ====================
 
 async def get_enrolled_students_for_class(class_id: str) -> List[str]:
-    """Get enrolled student IDs for a class"""
+    """Get enrolled student school_ids for a class (for face recognition)"""
     try:
-        # Try class_students table first
-        try:
-            result = supabase_manager.get_client().table('class_students').select('user_id')\
-                .eq('class_id', class_id).execute()
-            
-            if result.data:
-                student_ids = []
-                for record in result.data:
-                    try:
-                        user_result = supabase_manager.get_client().table('users').select('school_id')\
-                            .eq('id', record['user_id']).single().execute()
-                        if user_result.data and user_result.data.get('school_id'):
-                            student_ids.append(user_result.data['school_id'])
-                    except:
-                        continue
-                
-                if student_ids:
-                    logger.info(f"✅ Found {len(student_ids)} students for class {class_id}")
-                    return student_ids
-        except:
-            pass
+        # Use optimized view helper for better performance
+        students = db_view_helper.get_class_students_enrolled(class_id)
+        
+        if students:
+            school_ids = [s['school_id'] for s in students if s.get('school_id')]
+            if school_ids:
+                logger.info(f"✅ Found {len(school_ids)} students for class {class_id}")
+                return school_ids
         
         # Fallback: use DEBUG mode or manual list
         if DEBUG:

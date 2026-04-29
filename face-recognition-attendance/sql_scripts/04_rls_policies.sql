@@ -54,7 +54,7 @@ CREATE POLICY "Students can view their own records" ON attendance_records
         )
     );
 
-CREATE POLICY "Teachers can view records for their sessions" ON attendance_sessions
+CREATE POLICY "Teachers can view records for their sessions" ON attendance_records
     FOR SELECT USING (
         session_id IN (
             SELECT id FROM attendance_sessions 
@@ -66,9 +66,27 @@ CREATE POLICY "Teachers can view records for their sessions" ON attendance_sessi
 
 -- Face embeddings policies
 CREATE POLICY "Users can manage their own face data" ON student_face_embeddings
-    FOR ALL USING (
+    FOR SELECT USING (
+        -- Allow viewing embeddings for own face data or teachers managing students
         student_id IN (
             SELECT school_id FROM users WHERE user_id = auth.uid()
+        )
+        OR student_id IN (
+            SELECT DISTINCT se.student_id 
+            FROM student_enrollments se
+            JOIN classes c ON se.class_id = c.class_id
+            WHERE c.teacher_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Teachers can delete old face embeddings" ON student_face_embeddings
+    FOR DELETE USING (
+        -- Teachers can manage embeddings for their enrolled students
+        student_id IN (
+            SELECT DISTINCT se.student_id 
+            FROM student_enrollments se
+            JOIN classes c ON se.class_id = c.class_id
+            WHERE c.teacher_id = auth.uid()
         )
     );
 
@@ -81,5 +99,21 @@ CREATE POLICY "Teachers can view their class motion captures" ON motion_captures
                 SELECT class_id FROM classes WHERE teacher_id = auth.uid()
             )
         )
+    );
+
+CREATE POLICY "Admin can manage motion captures" ON motion_captures
+    FOR ALL USING (
+        (SELECT role FROM users WHERE user_id = auth.uid()) = 'admin'
+    );
+
+-- Admin bypass policies for all tables (allow admins to access everything)
+CREATE POLICY "Admin can access all attendance sessions" ON attendance_sessions
+    FOR ALL USING (
+        (SELECT role FROM users WHERE user_id = auth.uid()) = 'admin'
+    );
+
+CREATE POLICY "Admin can access all attendance records" ON attendance_records
+    FOR ALL USING (
+        (SELECT role FROM users WHERE user_id = auth.uid()) = 'admin'
     );
 EOF
