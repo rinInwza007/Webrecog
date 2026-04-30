@@ -741,7 +741,7 @@ async def start_motion_session(
             teacher_email=teacher_email,
             on_time_limit_minutes=on_time_limit_minutes
         )
-        
+        #ss
         # Save to database
         supabase_manager.get_client().table('attendance_sessions').insert({
             'id': session_id,
