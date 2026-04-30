@@ -5,6 +5,7 @@ import ClassCodeDisplay from './ClassCodeDisplay'
 import LiveVideoStream from './LiveVideoStream'
 import ClassDetailView from './ClassDetailView' // เพิ่ม import
 import config from './config'
+import image from './utils/logo/image.png' 
 
 const EnhancedTeacherDashboard = () => {
   const { user, signOut } = useAuth()
@@ -636,8 +637,8 @@ const EnhancedTeacherDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">🎯 Enhanced Teacher Dashboard</h1>
-              <p className="text-gray-600 mt-1">Motion Detection Attendance System - {user?.user_metadata?.full_name || user?.email}</p>
+              <h1 className="text-3xl font-bold text-gray-900"><img src={image} alt="Logo" className="h-24 w-24 inline-block mr-3" /> แดชบอร์ดอาจารย์</h1>
+              <p className="text-gray-600 mt-1">ยินดีต้อนรับ - {user?.user_metadata?.full_name || user?.email}</p>
             </div>
             <button
               onClick={handleSignOut}
@@ -803,8 +804,8 @@ const EnhancedTeacherDashboard = () => {
 
         {/* Quick Actions */}
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">🚀 Quick Actions</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">Menu</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <button
               onClick={() => setShowCreateModal(true)}
               className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg flex items-center justify-center space-x-2"
@@ -823,19 +824,9 @@ const EnhancedTeacherDashboard = () => {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <span>เริ่ม Motion Detection</span>
+              <span>เช็คชื่อ</span>
             </button>
             
-            <button
-              onClick={() => setShowManualCaptureModal(true)}
-              disabled={!currentSession}
-              className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              </svg>
-              <span>Manual Capture</span>
-            </button>
           </div>
         </div>
 
@@ -1182,7 +1173,7 @@ const EnhancedTeacherDashboard = () => {
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-8">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-bold text-gray-900">🎯 เริ่ม Motion Detection Session</h3>
+                <h3 className="text-2xl font-bold text-gray-900">🎯 เริ่มทำการเช็คชื่อ</h3>
                 <button
                   onClick={() => {
                     setShowStartSessionModal(false)

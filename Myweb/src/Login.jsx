@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from './AuthContext'
+import image from './utils/logo/image.png'
 
 const Login = ({ onSwitchToRegister }) => {
   const [email, setEmail] = useState('')
@@ -31,7 +32,8 @@ const Login = ({ onSwitchToRegister }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
+      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg ">
+        <img src={image} alt="Logo" className="h-64 w-64 mx-auto" />
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             เข้าสู่ระบบ
