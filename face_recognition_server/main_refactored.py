@@ -17,6 +17,7 @@ from PIL import Image
 from dotenv import load_dotenv
 import uuid
 import asyncio
+from datetime import timezone
 
 # Import from layers
 from state_module import supabase_manager, cache_manager, embedding_index_manager
@@ -49,6 +50,11 @@ FACE_THRESHOLD = float(os.getenv("FACE_VERIFICATION_THRESHOLD", 0.4))
 MOTION_DETECTION_ENABLED = os.getenv("MOTION_DETECTION_ENABLED", "true").lower() == "true"
 MOTION_COOLDOWN_SECONDS = int(os.getenv("MOTION_COOLDOWN_SECONDS", 30))
 MAX_SNAPSHOTS_PER_HOUR = int(os.getenv("MAX_SNAPSHOTS_PER_HOUR", 120))
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.info(f"⏱️ MOTION_COOLDOWN_SECONDS = {MOTION_COOLDOWN_SECONDS}")
+
+
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -294,12 +300,13 @@ async def process_motion_snapshot(
         
         # Save motion capture to DB
         capture_log = {
-            'session_id': session_id,
-            'capture_time': capture_time,
-            'motion_strength': motion_strength,
-            'elapsed_minutes': elapsed_minutes,
-            'processing_phase': phase,
-            'processing_status': 'processing'
+        'session_id': session_id,
+        'capture_time': capture_time,
+        'capture_type': 'auto',          
+        'trigger_type': 'motion',        
+        'motion_strength': motion_strength,
+        'processing_phase': phase,
+        'processing_status': 'processing'
         }
         supabase_manager.save_motion_capture(capture_log)
         
@@ -317,7 +324,7 @@ async def process_motion_snapshot(
         }
         
         # Start background processing
-        result = await motion_processing_service.process_motion_capture(processing_item)
+        result = await motion_processing_service.process_motion_capture(processing_item) #แคปหน้า
         
         # Record motion event
         motion_session_manager.record_motion_event(
@@ -715,14 +722,14 @@ async def get_motion_session_live_stats(session_id: str):
 
 # ==================== Real-Time Stream Endpoints ====================
 
-@app.post("/api/realtime/start-stream")
-async def start_realtime_stream(
+@app.post("/api/motion/start-session")
+async def start_motion_session(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
     on_time_limit_minutes: int = Form(15),
     duration_hours: int = Form(3)
 ):
-    """Start a real-time video stream attendance session"""
+    """Start a motion detection session"""
     try:
         # Create a motion detection session (same as realtime)
         session_id = str(uuid.uuid4())
@@ -743,12 +750,12 @@ async def start_realtime_stream(
             'on_time_limit_minutes': on_time_limit_minutes,
             'duration_hours': duration_hours,
             'status': 'active',
-            'session_type': 'realtime_stream',
+            'session_type': 'motion_detection',
             'start_time': datetime.now().isoformat(),
             'created_at': datetime.now().isoformat()
         }).execute()
         
-        logger.info(f"🎥 Real-time stream session started: {session_id}")
+        logger.info(f"🎥 Motion detection session started: {session_id}")
         
         return {
             "success": True,
@@ -761,12 +768,12 @@ async def start_realtime_stream(
         }
         
     except Exception as e:
-        logger.error(f"Error starting real-time stream: {e}")
+        logger.error(f"Error starting motion detection session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/realtime/{session_id}/stop")
-async def stop_realtime_stream(session_id: str):
-    """Stop a real-time video stream session"""
+@app.post("/api/motion/{session_id}/stop")
+async def stop_motion_session(session_id: str):
+    """Stop a motion detection session"""
     try:
         stats = motion_session_manager.get_session_stats(session_id)
         
@@ -782,7 +789,7 @@ async def stop_realtime_stream(session_id: str):
         # Remove from memory
         motion_session_manager.remove_session(session_id)
         
-        logger.info(f"🎬 Real-time stream session stopped: {session_id}")
+        logger.info(f"🎬 Motion detection session stopped: {session_id}")
         
         return {
             "success": True,
@@ -793,52 +800,61 @@ async def stop_realtime_stream(session_id: str):
         }
         
     except Exception as e:
-        logger.error(f"Error stopping real-time stream: {e}")
+        logger.error(f"Error stopping motion detection session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/realtime/{session_id}/manual-checkin")
-async def realtime_manual_checkin(
+@app.post("/api/motion/{session_id}/manual-checkin")
+async def motion_manual_checkin(
     session_id: str,
     student_email: str = Form(...),
     status: str = Form("present")
 ):
-    """Manual check-in for a student in real-time stream"""
     try:
-        # Get student name
+        # 🔍 Query user
         student_result = supabase_manager.get_client().table('users')\
-            .select('school_id, full_name').eq('email', student_email).execute()
+            .select('school_id, full_name, email')\
+            .eq('email', student_email)\
+            .execute()
         
-        student_name = "Unknown"
-        if student_result.data:
-            student_name = student_result.data[0].get('full_name', 'Unknown')
-        
-        # Record attendance
+        if not student_result.data:
+            raise HTTPException(status_code=404, detail="Student not found")
+
+        user_data = student_result.data[0]
+        student_id = user_data['school_id']   # ✅ ตัวจริง
+        student_name = user_data.get('full_name', 'Unknown')
+        student_email = user_data['email']    # ✅ fix ให้ชัด
+
+        # 📝 Record attendance
         attendance_record = {
             'session_id': session_id,
             'student_email': student_email,
-            'student_id': student_email,
-            'attendance_status': status,
-            'confidence': 1.0,
-            'is_manual': True,
-            'capture_time': datetime.now().isoformat(),
-            'recorded_at': datetime.now().isoformat()
+            'student_id': student_id,
+            'check_in_time': datetime.now().isoformat(),
+            'status': status,
+            'face_match_score': 1.0,
+            'detection_method': 'manual',
+            'processing_phase': 'realtime',
+            'face_quality': 1.0,
+            'motion_strength': 0.0,
+            'trigger_type': 'manual'
         }
-        
-        supabase_manager.get_client().table('attendance_records').insert(
-            attendance_record
-        ).execute()
-        
+
+        supabase_manager.get_client().table('attendance_records')\
+            .insert(attendance_record)\
+            .execute()
+
         logger.info(f"✅ Manual check-in recorded: {student_email} ({status})")
-        
+
         return {
             "success": True,
             "session_id": session_id,
             "student_email": student_email,
             "student_name": student_name,
+            "student_id": student_id,
             "status": status,
             "timestamp": datetime.now().isoformat()
         }
-        
+
     except Exception as e:
         logger.error(f"Error recording manual check-in: {e}")
         raise HTTPException(status_code=500, detail=str(e))

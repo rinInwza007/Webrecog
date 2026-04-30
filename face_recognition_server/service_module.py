@@ -188,7 +188,7 @@ class MotionDetectionProcessor:
     
     def get_motion_threshold(self, phase: str, base_threshold: float = None) -> float:
         """Get adaptive motion threshold for phase"""
-        adaptive = self.adaptive_thresholds.get(phase, 0.1)
+        adaptive = self.adaptive_thresholds.get(phase, 0.2)
         if base_threshold:
             return (adaptive + base_threshold) / 2
         return adaptive
@@ -367,58 +367,93 @@ class AttendanceRecordingService:
             
             student_id = face_info['student_id']
             confidence = face_info['confidence']
-            confidence_level = face_info.get('confidence_level', 'medium')
             
-            # Get student email
-            student_email = self.supabase_mgr.get_client().table('users').select('email')\
-                .eq('school_id', student_id).single().execute().data['email']
+            # Get student email (ไม่ใช้ .single() ป้องกัน HTTP 406)
+            user_result = self.supabase_mgr.get_client().table('users')\
+                .select('email')\
+                .eq('school_id', student_id)\
+                .execute()
             
-            if not student_email:
-                logger.warning(f"No user found for student_id: {student_id}")
+            if not user_result.data:
+                logger.warning(f"No user found for school_id: {student_id}")
                 return False
+            
+            student_email = user_result.data[0]['email']
             
             # Check if already recorded
             if self.supabase_mgr.check_attendance_exists(session_id, student_email):
                 logger.info(f"Student {student_id} already recorded, skipping")
                 return False
             
-            # Determine status (on-time or late)
-            capture_dt = datetime.fromisoformat(capture_time.replace('Z', '+00:00'))
-            session_start = datetime.fromisoformat(session_data['start_time'].replace('Z', '+00:00'))
-            on_time_limit = session_start + timedelta(minutes=session_data['on_time_limit_minutes'])
-            
+            # ── Timezone helper ──────────────────────────────────────────
+            def to_aware(dt_str: str) -> datetime:
+                """Parse datetime string และ force UTC ถ้าเป็น naive"""
+                from datetime import timezone
+                if not dt_str:
+                    return datetime.now(timezone.utc)
+                # normalize Z, space separator, และ +07:00 style ทั้งหมด
+                dt_str = dt_str.strip().replace('Z', '+00:00').replace(' ', 'T')
+                try:
+                    dt = datetime.fromisoformat(dt_str)
+                except ValueError:
+                    # fallback สำหรับ format ที่ไม่มี microseconds
+                    dt = datetime.strptime(dt_str[:19], '%Y-%m-%dT%H:%M:%S')
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            # ─────────────────────────────────────────────────────────────
+
+            capture_dt   = to_aware(capture_time)
+            session_start = to_aware(session_data['start_time'])
+            on_time_limit = session_start + timedelta(
+                minutes=session_data.get('on_time_limit_minutes', 30)
+            )
+
+            logger.debug(
+                f"⏱️  capture_dt={capture_dt} | "
+                f"session_start={session_start} | "
+                f"on_time_limit={on_time_limit}"
+            )
+
             status = 'present' if capture_dt <= on_time_limit else 'late'
             
-            # Prepare record
+            # Prepare record (เฉพาะ fields ที่มีใน schema)
             record_data = {
-                'session_id': session_id,
-                'student_email': student_email,
-                'student_id': student_id,
-                'check_in_time': capture_time,
-                'status': status,
-                'face_match_score': confidence,
-                'confidence_level': confidence_level,
-                'detection_method': 'advanced_motion_triggered',
-                'processing_phase': phase,
-                'face_quality': face_info.get('quality_score', 1.0),
-                'motion_strength': motion_strength,
-                'trigger_type': 'motion',
-                'advanced_metrics': json.dumps(face_info.get('advanced_analysis', [])),
-                'created_at': datetime.now().isoformat()
+                'session_id':        session_id,
+                'student_email':     student_email,
+                'student_id':        student_id,
+                'check_in_time':     capture_dt.isoformat(),   # ส่ง aware string เสมอ
+                'status':            status,
+                'face_match_score':  round(float(confidence), 3),
+                'detection_method':  'advanced_motion_triggered',
+                'processing_phase':  phase,
+                'face_quality':      round(float(face_info.get('quality_score', 1.0)), 2),
+                'motion_strength':   round(float(motion_strength), 3),
+                'trigger_type':      'motion',
             }
             
             # Save to database
             success = self.supabase_mgr.save_attendance_record(record_data)
             
             if success:
-                logger.info(f"✅ Attendance recorded for {student_id}: {status}")
+                logger.info(
+                    f"✅ Attendance recorded: {student_id} ({student_email}) "
+                    f"status={status} phase={phase}"
+                )
+            else:
+                logger.error(
+                    f"❌ save_attendance_record returned False for {student_id}"
+                )
             
             return success
             
         except Exception as e:
-            logger.error(f"❌ Error saving attendance for {face_info.get('student_id')}: {e}")
+            logger.error(
+                f"❌ Error saving attendance for {face_info.get('student_id')}: {e}",
+                exc_info=True   # print full traceback เพื่อ debug ต่อได้
+            )
             return False
-
+    
 
 class MotionProcessingService:
     """Orchestrate motion capture processing"""
@@ -501,10 +536,9 @@ class MotionProcessingService:
                 'faces_detected': len(detected_faces),
                 'faces_recognized': len([f for f in detected_faces if f['verified']]),
                 'new_records': new_records,
-                'processing_time_ms': int(processing_time * 1000),
+                'processing_time_ms': int((time.time() - start_time) * 1000),
                 'processing_status': 'completed',
-                'advanced_metrics': json.dumps(advanced_metrics),
-                'system_version': '6.0.0-refactored'
+                'attendance_records_created': new_records
             }
             
             self.supabase_mgr.update_motion_capture(session_id, item['capture_time'], update_data)

@@ -59,28 +59,28 @@ const ClassDetailView = ({ classData, onBack }) => {
       }
 
       // Fetch enrolled students
-      let enrolledStudents = []
-      
-      try {
-        const { data: classStudents } = await supabase
-          .from('class_students')
-          .select(`
-            user_id,
-            users!inner(id, school_id, email, full_name)
-          `)
-          .eq('class_id', classData.class_id)
+      // Fetch enrolled students via v_student_class_enrollment view
+let enrolledStudents = []
 
-        if (classStudents && classStudents.length > 0) {
-          enrolledStudents = classStudents.map(cs => ({
-            student_id: cs.users.school_id,
-            email: cs.users.email,
-            name: cs.users.full_name || 'No Name',
-            user_id: cs.users.id
-          }))
-        }
-      } catch (error) {
-        console.warn('class_students table not available:', error)
-      }
+try {
+  const { data: classStudents, error: enrollError } = await supabase
+    .from('v_student_class_enrollment')
+    .select('student_id, student_email, student_name, school_id')
+    .eq('class_id', classData.class_id)
+
+  if (enrollError) {
+    console.warn('v_student_class_enrollment error:', enrollError)
+  } else if (classStudents && classStudents.length > 0) {
+    enrolledStudents = classStudents.map(cs => ({
+      student_id: cs.school_id,    // ใช้ school_id เพื่อ match กับ attendance_records
+      email: cs.student_email,
+      name: cs.student_name || 'No Name',
+      user_id: cs.student_id       // UUID จาก users table
+    }))
+  }
+} catch (error) {
+  console.warn('Error fetching enrolled students:', error)
+}
 
       // If no enrolled students found, infer from attendance records
       if (enrolledStudents.length === 0 && sessions && sessions.length > 0) {
