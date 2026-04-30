@@ -190,12 +190,12 @@ class FaceEmbeddingProcessor:
             # Dynamic model selection
             if model == "auto":
                 # High motion -> use fast HOG; Low motion -> use accurate CNN
-                model = "cnn" if motion_strength < 0.3 else "hog"
+                model = "cnn" if motion_strength < 0.6 else "hog"
                 logger.debug(f"🔄 Dynamic model switch: motion={motion_strength:.2f} → {model}")
             
             # Optimize image if too large
             height, width = image_array.shape[:2]
-            max_dimension = 600
+            max_dimension = 1024
             
             if max(height, width) > max_dimension:
                 scale = max_dimension / max(height, width)
@@ -218,6 +218,7 @@ class FaceEmbeddingProcessor:
         """Extract face encodings from detected faces"""
         try:
             if not face_locations:
+
                 return []
             
             encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=num_jitters)
@@ -733,9 +734,9 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
             return []
         
         if not enrolled_students:
-            logger.warning("No enrolled students")
-            return []
-        
+            logger.warning("⚠️ No students → running detection-only mode")
+            
+            
         logger.info(f"🔍 Advanced processing with {len(enrolled_students)} enrolled students")
         
         # Detect faces
@@ -746,7 +747,7 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
             return []
         
         # Extract encodings
-        face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations, num_jitters=1)
+        face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations, num_jitters=2)
         
         if not face_encodings:
             logger.warning("❌ No face encodings generated")
