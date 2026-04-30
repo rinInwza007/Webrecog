@@ -150,7 +150,7 @@ const LiveVideoStream = ({
   }
 
   // Motion Detection Algorithm
-  const detectMotion = (currentFrame, previousFrame) => {
+  const detectMotion = (currentFrame, previousFrame) => { // เปรียบเทียบเฟรมปัจจุบันกับเฟรมก่อนหน้าเพื่อคำนวณความแตกต่าง (motion strength)
     if (!previousFrame) return 0
 
     try {
@@ -191,8 +191,9 @@ const LiveVideoStream = ({
       return 0
     }
   }
-
-  const checkMotionAndCapture = async () => {
+  const lastSentRef = useRef(0)   // ← มีไหม?
+  const COOLDOWN_MS = 10000         // ← มีไหม?
+  const checkMotionAndCapture = async () => { //แคป
     if (!videoRef.current || !canvasRef.current) return
 
     try {
@@ -225,16 +226,15 @@ const LiveVideoStream = ({
       const motionThreshold = currentSession?.motion_threshold || 0.1
       
       if (motionStrength > motionThreshold) {
-        setMotionDetected(true)
-        setLastMotionTime(new Date())
-        
-        console.log(`🚶 Motion detected! Strength: ${motionStrength.toFixed(3)}, Threshold: ${motionThreshold}`)
-        
-        // Send frame for motion processing
-        await sendFrameForMotionDetection(motionStrength)
-        
-        // Reset motion indicator after 2 seconds
-        setTimeout(() => setMotionDetected(false), 2000)
+          const now = Date.now()
+          if (now - lastSentRef.current > COOLDOWN_MS) {
+              lastSentRef.current = now
+              setMotionDetected(true)
+              setLastMotionTime(new Date())
+              console.log(`🚶 Motion detected!...`)
+              await sendFrameForMotionDetection(motionStrength)
+              setTimeout(() => setMotionDetected(false), 2000)
+          }
       }
 
       // Update motion strength in stats
@@ -248,9 +248,9 @@ const LiveVideoStream = ({
     }
   }
 
-  const sendFrameForMotionDetection = async (motionStrength = 0.5) => {
+  const sendFrameForMotionDetection = async (motionStrength = 0.5) => { // ส่งเฟรมไปยัง backend เพื่อประมวลผล motion detection  
     if (!videoRef.current || !canvasRef.current || !currentSession) return
-    if (!currentSession.session_type || currentSession.session_type !== 'motion_detection') return
+    //if (!currentSession.session_type || currentSession.session_type !== 'motion_detection') return
 
     try {
       const video = videoRef.current
@@ -264,7 +264,7 @@ const LiveVideoStream = ({
       canvas.toBlob(async (blob) => {
         if (blob) {
           const formData = new FormData()
-          formData.append('image', blob, 'motion_frame.jpg')
+          formData.append('image_data', blob, 'motion_frame.jpg')
           formData.append('session_id', currentSession.id)
           formData.append('motion_strength', motionStrength.toString())
           formData.append('elapsed_minutes', Math.floor((Date.now() - new Date(currentSession.start_time)) / 60000))
@@ -279,6 +279,7 @@ const LiveVideoStream = ({
             if (response.ok) {
               const result = await response.json()
               console.log('📸 Motion frame sent successfully:', result.message)
+              console.log('📸 Result:', result) 
               
               setVideoStats(prev => ({
                 ...prev,
