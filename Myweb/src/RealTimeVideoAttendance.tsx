@@ -1,33 +1,39 @@
-import React, { useState, useRef, useEffect} from 'react'
+import { useState, useRef, useEffect, FC } from 'react'
 import config from './config'
-const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
+import type { AttendanceListItem, StreamStats } from '@/types'
+
+interface RealTimeVideoAttendanceProps {
+  classId: string
+  teacherEmail: string
+  onSessionEnd?: (attendanceList: AttendanceListItem[]) => void
+}
+
+const RealTimeVideoAttendance: FC<RealTimeVideoAttendanceProps> = ({ classId, teacherEmail, onSessionEnd }) => {
   const [isStreaming, setIsStreaming] = useState(false)
-  const [sessionId, setSessionId] = useState(null)
-  const [stats, setStats] = useState({
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [stats, setStats] = useState<StreamStats>({
     frames_processed: 0,
     faces_detected: 0,
     faces_recognized: 0,
     attendance_recorded: 0
   })
-  const [attendanceList, setAttendanceList] = useState([])
+  const [attendanceList, setAttendanceList] = useState<AttendanceListItem[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const videoRef = useRef(null)
-  const canvasRef = useRef(null)
-  const streamRef = useRef(null)
-  const wsRef = useRef(null)
-  const intervalRef = useRef(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const FASTAPI_URL = config.BACKEND_URL
 
-  // Start video stream
   const startVideoStream = async () => {
     try {
       setLoading(true)
       setError('')
 
-      // Get user media
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -38,9 +44,10 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       })
 
       streamRef.current = stream
-      videoRef.current.srcObject = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+      }
 
-      // Start attendance session
       const formData = new FormData()
       formData.append('class_id', classId)
       formData.append('teacher_email', teacherEmail)
@@ -61,13 +68,10 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       setSessionId(result.session_id)
       setIsStreaming(true)
 
-      // Connect WebSocket
       connectWebSocket(result.session_id)
-
-      // Start frame processing
       startFrameProcessing()
 
-    } catch (err) {
+    } catch (err: any) {
       setError(`Failed to start video stream: ${err.message}`)
       stopVideoStream()
     } finally {
@@ -75,9 +79,11 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
     }
   }
 
-  // Connect WebSocket for real-time updates
-  const connectWebSocket = (sessionId) => {
-    const wsUrl = `ws://localhost:8000/ws/realtime/${sessionId}`
+  const connectWebSocket = (id: string) => {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsBase = FASTAPI_URL.replace(/^http/, wsProtocol)
+    const wsUrl = `${wsBase}/ws/realtime/${id}`
+    
     wsRef.current = new WebSocket(wsUrl)
 
     wsRef.current.onopen = () => {
@@ -90,14 +96,15 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       switch (data.type) {
         case 'frame_result':
           if (data.success && data.new_attendance) {
-            data.new_attendance.forEach(attendance => {
+            data.new_attendance.forEach((attendance: any) => {
               setAttendanceList(prev => [...prev, {
                 id: Date.now() + Math.random(),
                 studentName: attendance.student_name,
                 studentId: attendance.student_id,
                 status: attendance.status,
                 confidence: attendance.confidence,
-                timestamp: attendance.timestamp
+                timestamp: attendance.timestamp,
+                isManual: false
               }])
             })
           }
@@ -126,39 +133,36 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       console.log('🔌 WebSocket disconnected')
     }
 
-    wsRef.current.onerror = (error) => {
-      console.error('❌ WebSocket error:', error)
+    wsRef.current.onerror = (err) => {
+      console.error('❌ WebSocket error:', err)
       setError('WebSocket connection failed')
     }
   }
 
-  // Start processing frames
   const startFrameProcessing = () => {
     intervalRef.current = setInterval(() => {
       if (videoRef.current && canvasRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
         captureAndSendFrame()
       }
-    }, 500) // Send frame every 500ms (2 FPS)
+    }, 500)
   }
 
-  // Capture and send frame
   const captureAndSendFrame = () => {
     try {
       const video = videoRef.current
       const canvas = canvasRef.current
+      if (!video || !canvas) return
+      
       const ctx = canvas.getContext('2d')
+      if (!ctx) return
 
-      // Set canvas size to match video
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
 
-      // Draw video frame to canvas
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-      // Convert to base64
       const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1]
 
-      // Send via WebSocket
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
           type: 'frame',
@@ -170,30 +174,25 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
     }
   }
 
-  // Stop video stream
   const stopVideoStream = async () => {
     try {
       setLoading(true)
 
-      // Stop interval
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
 
-      // Close WebSocket
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
 
-      // Stop camera stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
 
-      // End session
       if (sessionId) {
         await fetch(`${FASTAPI_URL}/api/realtime/${sessionId}/stop`, {
           method: 'PUT'
@@ -201,21 +200,23 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       }
 
       setIsStreaming(false)
+      const currentAttendanceList = [...attendanceList]
       setSessionId(null)
       
       if (onSessionEnd) {
-        onSessionEnd(attendanceList)
+        onSessionEnd(currentAttendanceList)
       }
 
-    } catch (error) {
+    } catch (error: any) {
       setError(`Error stopping stream: ${error.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Manual check-in
-  const handleManualCheckin = async (studentEmail, status = 'present') => {
+  const handleManualCheckin = async (studentEmail: string, status: any = 'present') => {
+    if (!sessionId) return
+
     try {
       const formData = new FormData()
       formData.append('student_email', studentEmail)
@@ -241,22 +242,24 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
       } else {
         setError(result.detail || 'Manual check-in failed')
       }
-    } catch (error) {
+    } catch (error: any) {
       setError(`Manual check-in error: ${error.message}`)
     }
   }
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopVideoStream()
+      // stopVideoStream is async, but we can't await it here easily
+      // Basic cleanup
+      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (wsRef.current) wsRef.current.close()
+      if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop())
     }
   }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
@@ -320,7 +323,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
           </div>
         </div>
 
-        {/* Error Display */}
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             ❌ {error}
@@ -328,7 +330,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Video Stream */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-4">
@@ -362,7 +363,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                   </div>
                 )}
                 
-                {/* Processing Overlay */}
                 {isStreaming && (
                   <div className="absolute top-4 left-4 bg-black bg-opacity-60 text-white px-3 py-2 rounded-lg text-sm">
                     <div className="flex items-center space-x-2">
@@ -372,12 +372,9 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                   </div>
                 )}
               </div>
-              
-              {/* Hidden canvas for frame capture */}
               <canvas ref={canvasRef} style={{ display: 'none' }} />
             </div>
 
-            {/* Processing Statistics */}
             {isStreaming && (
               <div className="bg-white rounded-xl shadow-lg p-6 mt-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Processing Statistics</h3>
@@ -403,7 +400,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
             )}
           </div>
 
-          {/* Attendance List */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-4">
@@ -413,7 +409,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                 </span>
               </div>
 
-              {/* Manual Check-in */}
               {isStreaming && (
                 <div className="mb-4 p-4 bg-gray-50 rounded-lg">
                   <h4 className="text-sm font-medium text-gray-700 mb-2">Manual Check-in</h4>
@@ -422,7 +417,7 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                       type="email"
                       placeholder="student@email.com"
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      onKeyPress={(e) => {
+                      onKeyPress={(e: any) => {
                         if (e.key === 'Enter') {
                           handleManualCheckin(e.target.value)
                           e.target.value = ''
@@ -430,7 +425,7 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                       }}
                     />
                     <button
-                      onClick={(e) => {
+                      onClick={(e: any) => {
                         const input = e.target.parentNode.querySelector('input')
                         if (input.value) {
                           handleManualCheckin(input.value)
@@ -445,7 +440,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                 </div>
               )}
 
-              {/* Attendance List */}
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {attendanceList.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
@@ -495,40 +489,31 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
                 )}
               </div>
 
-              {/* Quick Stats */}
               {attendanceList.length > 0 && (
-  <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow">
-    <h4 className="text-sm font-medium text-green-800 mb-2">🎉 นักเรียนล่าสุดที่เช็คชื่อ</h4>
-    <div className="flex justify-between items-center">
-      <div>
-        <div className="font-bold text-gray-900">
-          {attendanceList[attendanceList.length - 1].studentName}
-        </div>
-        <div className="text-sm text-gray-600">
-          {attendanceList[attendanceList.length - 1].studentId}
-        </div>
-      </div>
-      <div className="text-right">
-        <span className="text-sm font-medium text-green-600">
-          {attendanceList[attendanceList.length - 1].status.toUpperCase()}
-        </span>
-        <div className="text-xs text-gray-500">
-          {new Date(attendanceList[attendanceList.length - 1].timestamp).toLocaleTimeString()}
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-{attendanceList.length > 0 && attendanceList[attendanceList.length - 1].photoUrl && (
-  <img 
-    src={attendanceList[attendanceList.length - 1].photoUrl} 
-    alt="snapshot" 
-    className="w-16 h-16 object-cover rounded-lg border" 
-  />
-)}
+                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg shadow">
+                  <h4 className="text-sm font-medium text-green-800 mb-2">🎉 นักเรียนล่าสุดที่เช็คชื่อ</h4>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-gray-900">
+                        {attendanceList[attendanceList.length - 1].studentName}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {attendanceList[attendanceList.length - 1].studentId}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-medium text-green-600">
+                        {attendanceList[attendanceList.length - 1].status.toUpperCase()}
+                      </span>
+                      <div className="text-xs text-gray-500">
+                        {new Date(attendanceList[attendanceList.length - 1].timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* System Status */}
             {isStreaming && (
               <div className="bg-white rounded-xl shadow-lg p-6 mt-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">System Status</h3>
@@ -570,7 +555,6 @@ const RealTimeVideoAttendance = ({ classId, teacherEmail, onSessionEnd }) => {
           </div>
         </div>
 
-        {/* Instructions */}
         {!isStreaming && (
           <div className="bg-white rounded-xl shadow-lg p-6 mt-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4">🎯 How It Works</h3>

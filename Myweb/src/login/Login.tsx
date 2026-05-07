@@ -1,27 +1,46 @@
-import { useState } from 'react'
+import { useState, FormEvent, ChangeEvent, FC } from 'react'
 import { useAuth } from './AuthContext'
-import image from './utils/logo/image.png'
+import { useNavigate } from 'react-router-dom'
+import image from '../utils/logo/image.png'
+import type { AuthError } from '@supabase/supabase-js'
 
-const Login = ({ onSwitchToRegister }) => {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+interface LoginProps {
+  onSwitchToRegister: () => void
+}
+
+const Login: FC<LoginProps> = ({ onSwitchToRegister }) => {
+  const [email, setEmail] = useState<string>('')
+  const [password, setPassword] = useState<string>('')
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
   const { signIn } = useAuth()
+  const navigate = useNavigate()
 
-  const handleSubmit = async (e) => {
+  const handleEmailChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value)
+  }
+
+  const handlePasswordChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value)
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      const { error } = await signIn(email, password)
-      if (error) {
-        setError(error.message)
-      return
-      }
-      console.log('Login success:', email) 
+      const result = await signIn(email, password)
 
+      if (result.error) {
+        const authError = result.error as AuthError
+        setError(authError.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
+        return
+      }
+
+      console.log('Login success:', email)
+      // redirect ไปหน้า dashboard
+      navigate('/dashboard')
     } catch (err) {
       console.error('Login error:', err)
       setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
@@ -32,7 +51,7 @@ const Login = ({ onSwitchToRegister }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg ">
+      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
         <img src={image} alt="Logo" className="h-64 w-64 mx-auto" />
         <div className="text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
@@ -57,7 +76,7 @@ const Login = ({ onSwitchToRegister }) => {
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={handleEmailChange}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               placeholder="your@email.com"
             />
@@ -72,7 +91,7 @@ const Login = ({ onSwitchToRegister }) => {
               type="password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               placeholder="••••••••"
             />
@@ -85,9 +104,25 @@ const Login = ({ onSwitchToRegister }) => {
           >
             {loading ? (
               <div className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 กำลังเข้าสู่ระบบ...
               </div>

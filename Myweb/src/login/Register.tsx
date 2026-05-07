@@ -1,29 +1,56 @@
-import { useState } from 'react'
+import { useState, ChangeEvent, FormEvent, FC } from 'react'
 import { useAuth } from './AuthContext'
-import { supabase } from './supabaseClient'
+import { supabase } from '../supabaseClient'
+import type { User as SupabaseUser, AuthError } from '@supabase/supabase-js'
+import type { User as AppUser } from '../../Types/user'
+import type { UserRole } from '../../Types/common'
 
-const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
-  const [formData, setFormData] = useState({
+interface RegisterProps {
+  onSwitchToLogin: () => void
+  onRegistrationSuccess: (user: SupabaseUser, role: UserRole) => void
+}
+
+interface FormData {
+  email: string
+  password: string
+  confirmPassword: string
+  fullName: string
+  schoolId: string
+  role: UserRole
+}
+
+const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess }) => {
+  const [formData, setFormData] = useState<FormData>({
     email: '',
     password: '',
     confirmPassword: '',
     fullName: '',
-    schoolId: '', 
+    schoolId: '',
     role: 'student'
   })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
   const { signUp } = useAuth()
 
   // สร้าง school_id อัตโนมัติ
-  const generateSchoolId = (fullName, role) => {
+  const generateSchoolId = (fullName: string, role: UserRole): string => {
     const timestamp = Date.now().toString().slice(-6) // เอา 6 หลักสุดท้าย
     const namePrefix = fullName.replace(/\s+/g, '').toLowerCase().slice(0, 3)
     const rolePrefix = role === 'student' ? 'STD' : 'TCH'
     return `${rolePrefix}${namePrefix}${timestamp}`.toUpperCase()
   }
 
-  const handleSubmit = async (e) => {
+  const handleInputChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ): void => {
+    const { name, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -56,55 +83,54 @@ const Register = ({ onSwitchToLogin, onRegistrationSuccess }) => {
 
       // ตรวจสอบว่า school_id ซ้ำหรือไม่
       const { data: existingUser, error: checkError } = await supabase
-  .from('users')
-  .select('school_id')
-  .eq('school_id', schoolId)
-  .maybeSingle()
+        .from('users')
+        .select('school_id')
+        .eq('school_id', schoolId)
+        .maybeSingle()
 
-if (checkError) {
-  setError('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล')
-  setLoading(false)
-  return
-}
-
-if (existingUser) {
-  setError('รหัสนักเรียน/อาจารย์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น')
-  setLoading(false)
-  return
-}
-
-      // Sign up with Supabase Auth
-      const { data, error: signUpError } = await signUp(
-        formData.email,
-        formData.password,
-        {
-          full_name: formData.fullName,
-          role: formData.role,
-          school_id: schoolId
-        }
-      )
-
-      if (signUpError) {
-        setError(signUpError.message)
+      if (checkError) {
+        setError('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล')
+        setLoading(false)
         return
       }
 
-      if (data.user) {
+      if (existingUser) {
+        setError('รหัสนักเรียน/อาจารย์นี้มีอยู่แล้ว กรุณาใช้รหัสอื่น')
+        setLoading(false)
+        return
+      }
+
+      // Sign up with Supabase Auth
+      const result = await signUp(formData.email, formData.password, {
+        full_name: formData.fullName,
+        role: formData.role,
+        school_id: schoolId
+      })
+
+      if (result.error) {
+        const authError = result.error as AuthError
+        setError(authError.message || 'เกิดข้อผิดพลาดในการสมัครสมาชิก')
+        return
+      }
+
+      if (result.data?.user) {
+        const authUser = result.data.user as SupabaseUser
+
         // Insert user data into users table
+        const appUserData: AppUser = {
+          user_id: authUser.id,
+          email: formData.email,
+          full_name: formData.fullName,
+          school_id: schoolId,
+          role: formData.role,
+          password_hash: 'managed_by_supabase_auth',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
         const { error: insertError } = await supabase
           .from('users')
-          .insert([
-            {
-              user_id: data.user.id,
-              email: formData.email,
-              full_name: formData.fullName,
-              school_id: schoolId, // เพิ่ม school_id
-              role: formData.role,
-              password_hash: 'managed_by_supabase_auth', // Placeholder since Supabase manages this
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }
-          ])
+          .insert([appUserData])
 
         if (insertError) {
           console.error('Error inserting user data:', insertError)
@@ -112,31 +138,18 @@ if (existingUser) {
           return
         }
 
-        console.log('User registered successfully:', {
-          user_id: data.user.id,
-          email: formData.email,
-          full_name: formData.fullName,
-          school_id: schoolId,
-          role: formData.role
-        })
+        console.log('User registered successfully:', appUserData)
 
         // Success - call the callback to proceed to next step
-        onRegistrationSuccess(data.user, formData.role)
+        onRegistrationSuccess(authUser, formData.role)
       }
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       console.error('Registration error:', err)
-      setError('เกิดข้อผิดพลาดในการสมัครสมาชิก: ' + err.message)
+      setError('เกิดข้อผิดพลาดในการสมัครสมาชิก: ' + errorMessage)
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }))
   }
 
   return (
@@ -280,9 +293,25 @@ if (existingUser) {
           >
             {loading ? (
               <div className="flex items-center justify-center">
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 กำลังสมัครสมาชิก...
               </div>

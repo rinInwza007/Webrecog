@@ -1,57 +1,93 @@
-import { useState, useRef } from 'react'
-import { supabase } from './supabaseClient'
+import {
+  useState,
+  useRef,
+  ChangeEvent,
+  FC,
+  FormEvent,
+  RefObject
+} from 'react'
+import { supabase } from '../supabaseClient'
 import { useAuth } from './AuthContext'
-import config from './config'
+import config from '../config'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 
+interface Photo {
+  file: File
+  preview: string
+  id: number
+  name: string
+  size: number
+}
 
-const FaceRegistration = ({ onComplete }) => {
-  const [photos, setPhotos] = useState([])
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const fileInputRef = useRef(null)
+interface EnrollmentResult {
+  success: boolean
+  images_processed: number
+  total_images: number
+  quality_score: number
+  enrollment_type: string
+}
+
+interface UserData {
+  school_id: string
+  email: string
+  full_name: string
+}
+
+interface FaceRegistrationProps {
+  onComplete: () => void
+}
+
+const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
+  const [photos, setPhotos] = useState<Photo[]>([])
+  const [uploading, setUploading] = useState<boolean>(false)
+  const [error, setError] = useState<string>('')
+  const [success, setSuccess] = useState<string>('')
+  const [uploadProgress, setUploadProgress] = useState<number>(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { user } = useAuth()
 
   // URL ของ FastAPI server - ปรับให้ตรงกับ server ของคุณ
-  const FASTAPI_URL = config.BACKEND_URL
+  const FASTAPI_URL: string = config.BACKEND_URL
 
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files)
-    
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>): void => {
+    const files = Array.from(e.target.files || [])
+
     if (photos.length + files.length > 5) {
       setError('สามารถอัพโหลดได้สูงสุด 5 รูป')
       return
     }
 
     // ตรวจสอบขนาดและประเภทไฟล์
-    const validFiles = []
+    const validFiles: File[] = []
     const maxSize = 5 * 1024 * 1024 // 5MB
-    
-    files.forEach(file => {
+
+    files.forEach((file) => {
       if (!file.type.startsWith('image/')) {
         setError('กรุณาเลือกไฟล์รูปภาพเท่านั้น')
         return
       }
-      
+
       if (file.size > maxSize) {
         setError('ขนาดไฟล์ต้องไม่เกิน 5MB')
         return
       }
-      
+
       validFiles.push(file)
     })
 
-    validFiles.forEach(file => {
+    validFiles.forEach((file) => {
       const reader = new FileReader()
       reader.onload = (event) => {
-        setPhotos(prev => [...prev, {
-          file,
-          preview: event.target.result,
-          id: Date.now() + Math.random(),
-          name: file.name,
-          size: file.size
-        }])
+        setPhotos((prev) => [
+          ...prev,
+          {
+            file,
+            preview: (event.target?.result as string) || '',
+            id: Date.now() + Math.random(),
+            name: file.name,
+            size: file.size
+          }
+        ])
       }
       reader.readAsDataURL(file)
     })
@@ -59,12 +95,16 @@ const FaceRegistration = ({ onComplete }) => {
     setError('')
   }
 
-  const removePhoto = (id) => {
-    setPhotos(prev => prev.filter(photo => photo.id !== id))
+  const removePhoto = (id: number): void => {
+    setPhotos((prev) => prev.filter((photo) => photo.id !== id))
   }
 
-  const getUserData = async () => {
+  const getUserData = async (): Promise<UserData | null> => {
     try {
+      if (!user) {
+        throw new Error('User not authenticated')
+      }
+
       // ดึงข้อมูลนักเรียนจาก users table
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -77,61 +117,64 @@ const FaceRegistration = ({ onComplete }) => {
         return null
       }
 
-      return userData
+      return userData as UserData
     } catch (error) {
       console.error('Error getting user data:', error)
       return null
     }
   }
 
-  const enrollFaceWithAPI = async (userData) => {
+  const enrollFaceWithAPI = async (userData: UserData): Promise<EnrollmentResult> => {
     try {
       setUploadProgress(10)
-      
+
       // สร้าง FormData สำหรับส่งไปยัง FastAPI
       const formData = new FormData()
-      
+
       // เพิ่มข้อมูลนักเรียน
       formData.append('student_id', userData.school_id)
       formData.append('student_email', userData.email)
-      
+
       setUploadProgress(30)
-      
+
       // เพิ่มรูปภาพทั้งหมด
       photos.forEach((photo, index) => {
-        console.log(`Appending photo ${index + 1}:`, photo.file.name, `(${(photo.size / 1024 / 1024).toFixed(2)} MB)`)
+        console.log(
+          `Appending photo ${index + 1}:`,
+          photo.file.name,
+          `(${(photo.size / 1024 / 1024).toFixed(2)} MB)`
+        )
         formData.append('images', photo.file)
       })
-      
+
       setUploadProgress(50)
 
       // ส่งข้อมูลไปยัง FastAPI server
       const response = await fetch(`${FASTAPI_URL}/api/face/enroll-advanced`, {
         method: 'POST',
-        body: formData,
+        body: formData
       })
 
       setUploadProgress(80)
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = (await response.json()) as { detail?: string }
         throw new Error(errorData.detail || 'เกิดข้อผิดพลาดในการลงทะเบียนใบหน้า')
       }
 
-      const result = await response.json()
+      const result = (await response.json()) as EnrollmentResult
       setUploadProgress(100)
-      
-      console.log('Face enrollment result:', result)
-      
-      return result
 
+      console.log('Face enrollment result:', result)
+
+      return result
     } catch (error) {
       console.error('Face enrollment API error:', error)
       throw error
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (): Promise<void> => {
     if (photos.length < 1) {
       setError('กรุณาอัพโหลดรูปภาพอย่างน้อย 1 รูป')
       return
@@ -145,7 +188,7 @@ const FaceRegistration = ({ onComplete }) => {
     try {
       // ดึงข้อมูลนักเรียน
       const userData = await getUserData()
-      
+
       if (!userData) {
         throw new Error('ไม่พบข้อมูลนักเรียน กรุณาตรวจสอบการลงทะเบียน')
       }
@@ -164,7 +207,7 @@ const FaceRegistration = ({ onComplete }) => {
         - ประมวลผล: ${enrollmentResult.images_processed}/${enrollmentResult.total_images} รูป
         - คุณภาพ: ${(enrollmentResult.quality_score * 100).toFixed(1)}%
         - ระบบ: ${enrollmentResult.enrollment_type}`)
-        
+
         // รอ 2 วินาทีให้ผู้ใช้อ่านข้อความสำเร็จ
         setTimeout(() => {
           onComplete()
@@ -172,20 +215,19 @@ const FaceRegistration = ({ onComplete }) => {
       } else {
         throw new Error('การลงทะเบียนใบหน้าไม่สำเร็จ')
       }
-
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       console.error('Error in face registration:', err)
-      setError(`เกิดข้อผิดพลาด: ${err.message}`)
-      
+      setError(`เกิดข้อผิดพลาด: ${errorMessage}`)
+
       // ถ้าเป็นปัญหาการเชื่อมต่อ server
-      if (err.message.includes('fetch')) {
+      if (errorMessage.includes('fetch')) {
         setError(`ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Face Recognition ได้
         กรุณาตรวจสอบ:
         1. เซิร์ฟเวอร์ FastAPI ทำงานอยู่หรือไม่ (${FASTAPI_URL})
         2. การตั้งค่า CORS
         3. การเชื่อมต่ออินเทอร์เน็ต`)
       }
-      
     } finally {
       setUploading(false)
       setUploadProgress(0)
@@ -193,11 +235,11 @@ const FaceRegistration = ({ onComplete }) => {
   }
 
   // ตรวจสอบสถานะ FastAPI server
-  const testServerConnection = async () => {
+  const testServerConnection = async (): Promise<void> => {
     try {
       const response = await fetch(`${FASTAPI_URL}/health`)
-      const data = await response.json()
-      
+      const data = (await response.json()) as { status?: string }
+
       if (data.status === 'healthy') {
         setSuccess('✅ เชื่อมต่อกับเซิร์ฟเวอร์ Face Recognition สำเร็จ')
       } else {
@@ -213,13 +255,11 @@ const FaceRegistration = ({ onComplete }) => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100">
       <div className="max-w-2xl w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            ลงทะเบียนใบหน้า
-          </h2>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">ลงทะเบียนใบหน้า</h2>
           <p className="text-gray-600 mb-4">
             อัพโหลดรูปภาพใบหน้าของคุณเพื่อใช้ในการเช็คชื่อด้วยระบบ AI
           </p>
-          
+
           {/* Server Connection Status */}
           <div className="mb-4">
             <button
@@ -230,7 +270,7 @@ const FaceRegistration = ({ onComplete }) => {
             </button>
             <p className="text-xs text-gray-500 mt-1">Server: {FASTAPI_URL}</p>
           </div>
-          
+
           {/* Progress Steps */}
           <div className="flex justify-center mb-8">
             <div className="flex items-center space-x-4">
@@ -266,8 +306,8 @@ const FaceRegistration = ({ onComplete }) => {
               <span className="text-sm text-gray-500">{uploadProgress}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-purple-600 h-2 rounded-full transition-all duration-300" 
+              <div
+                className="bg-purple-600 h-2 rounded-full transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               ></div>
             </div>
@@ -313,14 +353,24 @@ const FaceRegistration = ({ onComplete }) => {
               className="hidden"
               disabled={uploading}
             />
-            
-            <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400 mb-4"
+              stroke="currentColor"
+              fill="none"
+              viewBox="0 0 48 48"
+            >
+              <path
+                d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
-            
+
             <p className="text-lg font-medium text-gray-900 mb-2">เลือกรูปภาพใบหน้า</p>
             <p className="text-sm text-gray-600 mb-4">รองรับไฟล์ JPG, PNG (สูงสุด 5 รูป, 5MB/รูป)</p>
-            
+
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading || photos.length >= 5}
@@ -373,9 +423,25 @@ const FaceRegistration = ({ onComplete }) => {
             >
               {uploading ? (
                 <div className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   กำลังประมวลผล...
                 </div>
@@ -383,7 +449,7 @@ const FaceRegistration = ({ onComplete }) => {
                 '🤖 บันทึกข้อมูลใบหน้า'
               )}
             </button>
-            
+
             <button
               onClick={() => onComplete()}
               disabled={uploading}

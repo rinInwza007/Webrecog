@@ -1,11 +1,16 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from './AuthContext'
+import { useState, useEffect, FC } from 'react'
+import { useAuth } from './login/AuthContext'
 import { supabase } from './supabaseClient'
 import image from './utils/logo/image.png'
+import type { StudentEnrollment, Class } from '@/types'
 
-const StudentDashboard = () => {
+interface EnrollmentWithClass extends StudentEnrollment {
+  classes: Class | null
+}
+
+const StudentDashboard: FC = () => {
   const { user, signOut } = useAuth()
-  const [classes, setClasses] = useState([])
+  const [classes, setClasses] = useState<EnrollmentWithClass[]>([])
   const [loading, setLoading] = useState(true)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [classCode, setClassCode] = useState('')
@@ -22,7 +27,6 @@ const StudentDashboard = () => {
       console.log('=== Starting fetchStudentClasses ===')
       console.log('User ID:', user.id)
       
-      // Simple approach: Get enrollments first
       const { data: enrollments, error: enrollmentError } = await supabase
         .from('student_enrollments')
         .select('*')
@@ -41,7 +45,6 @@ const StudentDashboard = () => {
         return
       }
 
-      // Get classes separately
       const classIds = enrollments.map(e => e.class_id)
       console.log('Class IDs to fetch:', classIds)
 
@@ -57,9 +60,8 @@ const StudentDashboard = () => {
         throw classesError
       }
 
-      // Combine data
-      const combinedData = enrollments.map(enrollment => {
-        const classData = classesData.find(c => c.class_id === enrollment.class_id)
+      const combinedData: EnrollmentWithClass[] = enrollments.map(enrollment => {
+        const classData = classesData?.find(c => c.class_id === enrollment.class_id)
         return {
           ...enrollment,
           classes: classData || null
@@ -69,7 +71,7 @@ const StudentDashboard = () => {
       console.log('Combined data:', combinedData)
       setClasses(combinedData)
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in fetchStudentClasses:', error)
       alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message)
     } finally {
@@ -89,7 +91,6 @@ const StudentDashboard = () => {
       console.log('=== Starting joinClass ===')
       console.log('Class code:', classCode.trim().toUpperCase())
       
-      // Find class by code
       const { data: classData, error: classError } = await supabase
         .from('classes')
         .select('*')
@@ -103,33 +104,26 @@ const StudentDashboard = () => {
         return
       }
 
-      // Check if already enrolled
-      const { data: existingEnrollment, error: checkError } = await supabase
+      const { data: existingEnrollment } = await supabase
         .from('student_enrollments')
         .select('*')
-        .eq('student_id', user.id)
+        .eq('student_id', user?.id)
         .eq('class_id', classData.class_id)
         .single()
-
-      console.log('Existing enrollment check:', { existingEnrollment, checkError })
 
       if (existingEnrollment) {
         alert('คุณได้ลงทะเบียนวิชานี้แล้ว')
         return
       }
 
-      // Enroll student
-      const { data: enrollData, error: enrollError } = await supabase
+      const { error: enrollError } = await supabase
         .from('student_enrollments')
         .insert([
           {
-            student_id: user.id,
+            student_id: user?.id,
             class_id: classData.class_id
           }
         ])
-        .select()
-
-      console.log('Enrollment result:', { enrollData, enrollError })
 
       if (enrollError) throw enrollError
 
@@ -137,9 +131,8 @@ const StudentDashboard = () => {
       setShowJoinModal(false)
       setClassCode('')
       
-      // Refresh the classes list
       fetchStudentClasses()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error joining class:', error)
       alert('เกิดข้อผิดพลาดในการลงทะเบียนวิชา: ' + error.message)
     } finally {
@@ -147,8 +140,8 @@ const StudentDashboard = () => {
     }
   }
 
-  const leaveClass = async (enrollmentId, className) => {
-    if (!confirm(`คุณต้องการออกจากวิชา "${className}" ใช่หรือไม่?`)) {
+  const leaveClass = async (enrollmentId: string, className?: string) => {
+    if (!confirm(`คุณต้องการออกจากวิชา "${className || 'นี้'}" ใช่หรือไม่?`)) {
       return
     }
 
