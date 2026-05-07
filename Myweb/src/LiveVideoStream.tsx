@@ -1,35 +1,55 @@
-// ไฟล์: Myweb/src/LiveVideoStream.jsx
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, FC } from 'react'
 import config from './config'
-const LiveVideoStream = ({ 
+import type { AttendanceSession } from '@/types'
+
+interface LiveVideoStreamProps {
+  currentSession: (AttendanceSession & { classes?: any }) | null
+  isSessionActive: boolean
+  onManualCapture: (blob: Blob) => Promise<void>
+  motionStats?: {
+    live_stats?: {
+      motion_events?: number
+      [key: string]: any
+    }
+  }
+}
+
+interface VideoStats {
+  fps: number
+  framesSent: number
+  lastFrameTime: string | null
+  lastMotionStrength: number
+}
+
+const LiveVideoStream: FC<LiveVideoStreamProps> = ({ 
   currentSession, 
   isSessionActive, 
   onManualCapture, 
   motionStats 
 }) => {
-  const videoRef = useRef(null)
-  const canvasRef = useRef(null)
-  const streamRef = useRef(null)
-  const intervalRef = useRef(null)
-  const previousFrameRef = useRef(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const previousFrameRef = useRef<HTMLCanvasElement | null>(null)
+  const lastSentRef = useRef<number>(0)
   
   const [isStreaming, setIsStreaming] = useState(false)
   const [cameraError, setCameraError] = useState('')
   const [isCapturing, setIsCapturing] = useState(false)
   const [motionDetected, setMotionDetected] = useState(false)
-  const [lastMotionTime, setLastMotionTime] = useState(null)
+  const [lastMotionTime, setLastMotionTime] = useState<Date | null>(null)
   const [autoCapture, setAutoCapture] = useState(true)
-  const [videoStats, setVideoStats] = useState({
+  const [videoStats, setVideoStats] = useState<VideoStats>({
     fps: 0,
     framesSent: 0,
     lastFrameTime: null,
     lastMotionStrength: 0
   })
 
-  // FastAPI URL
   const FASTAPI_URL = config.BACKEND_URL
+  const COOLDOWN_MS = 10000
 
-  // เริ่มกล้องเมื่อมี session ที่ active
   useEffect(() => {
     if (isSessionActive && currentSession) {
       startVideoStream()
@@ -42,7 +62,6 @@ const LiveVideoStream = ({
     }
   }, [isSessionActive, currentSession])
 
-  // ส่งเฟรมเป็นระยะเมื่อ streaming
   useEffect(() => {
     if (isStreaming && currentSession) {
       startFrameCapture()
@@ -55,16 +74,14 @@ const LiveVideoStream = ({
     }
   }, [isStreaming, currentSession, autoCapture])
 
-  // คำนวณ FPS
   useEffect(() => {
     if (!isStreaming) return
 
     const fpsInterval = setInterval(() => {
       if (videoRef.current) {
-        // อัปเดต FPS counter (แบบประมาณ)
         setVideoStats(prev => ({
           ...prev,
-          fps: Math.round(Math.random() * 5 + 25) // Mock FPS 25-30
+          fps: Math.round(Math.random() * 5 + 25)
         }))
       }
     }, 1000)
@@ -77,7 +94,6 @@ const LiveVideoStream = ({
       setCameraError('')
       console.log('🎥 Starting video stream...')
       
-      // ขอใช้กล้อง
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -98,7 +114,7 @@ const LiveVideoStream = ({
         }
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error starting video stream:', error)
       setCameraError(`ไม่สามารถเปิดกล้องได้: ${error.message}`)
     }
@@ -118,7 +134,6 @@ const LiveVideoStream = ({
       setIsStreaming(false)
       stopFrameCapture()
       
-      // Reset states
       setMotionDetected(false)
       setLastMotionTime(null)
       previousFrameRef.current = null
@@ -134,12 +149,11 @@ const LiveVideoStream = ({
       clearInterval(intervalRef.current)
     }
 
-    // ตรวจสอบ motion ทุก 1 วินาที
     intervalRef.current = setInterval(() => {
       if (currentSession && autoCapture && isStreaming) {
         checkMotionAndCapture()
       }
-    }, 1000) // ทุก 1 วินาที
+    }, 1000)
   }
 
   const stopFrameCapture = () => {
@@ -149,8 +163,7 @@ const LiveVideoStream = ({
     }
   }
 
-  // Motion Detection Algorithm
-  const detectMotion = (currentFrame, previousFrame) => { // เปรียบเทียบเฟรมปัจจุบันกับเฟรมก่อนหน้าเพื่อคำนวณความแตกต่าง (motion strength)
+  const detectMotion = (currentFrame: HTMLVideoElement | HTMLCanvasElement, previousFrame: HTMLCanvasElement | null): number => {
     if (!previousFrame) return 0
 
     try {
@@ -159,7 +172,9 @@ const LiveVideoStream = ({
       const ctx1 = canvas1.getContext('2d')
       const ctx2 = canvas2.getContext('2d')
 
-      const width = 160 // ลดขนาดเพื่อประมวลผลเร็วขึ้น
+      if (!ctx1 || !ctx2) return 0
+
+      const width = 160
       const height = 120
 
       canvas1.width = canvas2.width = width
@@ -185,15 +200,14 @@ const LiveVideoStream = ({
         diff += Math.abs(gray1 - gray2)
       }
 
-      return diff / (width * height * 255) // normalize
+      return diff / (width * height * 255)
     } catch (error) {
       console.error('Motion detection error:', error)
       return 0
     }
   }
-  const lastSentRef = useRef(0)   // ← มีไหม?
-  const COOLDOWN_MS = 10000         // ← มีไหม?
-  const checkMotionAndCapture = async () => { //แคป
+
+  const checkMotionAndCapture = async () => {
     if (!videoRef.current || !canvasRef.current) return
 
     try {
@@ -201,28 +215,31 @@ const LiveVideoStream = ({
       const canvas = canvasRef.current
       const ctx = canvas.getContext('2d')
 
+      if (!ctx) return
+
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-      // Detect motion
       const motionStrength = detectMotion(video, previousFrameRef.current)
       
-      // Update previous frame
       if (previousFrameRef.current) {
         const prevCtx = previousFrameRef.current.getContext('2d')
-        prevCtx.clearRect(0, 0, previousFrameRef.current.width, previousFrameRef.current.height)
-        prevCtx.drawImage(video, 0, 0, previousFrameRef.current.width, previousFrameRef.current.height)
+        if (prevCtx) {
+          prevCtx.clearRect(0, 0, previousFrameRef.current.width, previousFrameRef.current.height)
+          prevCtx.drawImage(video, 0, 0, previousFrameRef.current.width, previousFrameRef.current.height)
+        }
       } else {
         previousFrameRef.current = document.createElement('canvas')
         previousFrameRef.current.width = video.videoWidth
         previousFrameRef.current.height = video.videoHeight
         const prevCtx = previousFrameRef.current.getContext('2d')
-        prevCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight)
-        return // Skip first frame comparison
+        if (prevCtx) {
+          prevCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight)
+        }
+        return
       }
 
-      // Check if motion is significant
       const motionThreshold = currentSession?.motion_threshold || 0.1
       
       if (motionStrength > motionThreshold) {
@@ -237,7 +254,6 @@ const LiveVideoStream = ({
           }
       }
 
-      // Update motion strength in stats
       setVideoStats(prev => ({
         ...prev,
         lastMotionStrength: motionStrength
@@ -248,14 +264,15 @@ const LiveVideoStream = ({
     }
   }
 
-  const sendFrameForMotionDetection = async (motionStrength = 0.5) => { // ส่งเฟรมไปยัง backend เพื่อประมวลผล motion detection  
+  const sendFrameForMotionDetection = async (motionStrength = 0.5) => {
     if (!videoRef.current || !canvasRef.current || !currentSession) return
-    //if (!currentSession.session_type || currentSession.session_type !== 'motion_detection') return
 
     try {
       const video = videoRef.current
       const canvas = canvasRef.current
       const ctx = canvas.getContext('2d')
+
+      if (!ctx) return
 
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
@@ -267,7 +284,7 @@ const LiveVideoStream = ({
           formData.append('image_data', blob, 'motion_frame.jpg')
           formData.append('session_id', currentSession.id)
           formData.append('motion_strength', motionStrength.toString())
-          formData.append('elapsed_minutes', Math.floor((Date.now() - new Date(currentSession.start_time)) / 60000))
+          formData.append('elapsed_minutes', Math.floor((Date.now() - new Date(currentSession.start_time).getTime()) / 60000).toString())
           formData.append('device_id', 'webcam_live_stream')
 
           try {
@@ -279,7 +296,6 @@ const LiveVideoStream = ({
             if (response.ok) {
               const result = await response.json()
               console.log('📸 Motion frame sent successfully:', result.message)
-              console.log('📸 Result:', result) 
               
               setVideoStats(prev => ({
                 ...prev,
@@ -287,7 +303,6 @@ const LiveVideoStream = ({
                 lastFrameTime: new Date().toLocaleTimeString()
               }))
             } else if (response.status === 400) {
-              // Motion blocked by cooldown or rate limiting - this is normal
               const errorData = await response.json()
               console.log('📵 Motion frame blocked (normal):', errorData.message)
             } else {
@@ -316,6 +331,8 @@ const LiveVideoStream = ({
       const video = videoRef.current
       const canvas = canvasRef.current
       const ctx = canvas.getContext('2d')
+
+      if (!ctx) return
 
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
@@ -367,7 +384,6 @@ const LiveVideoStream = ({
         )}
       </div>
 
-      {/* Video Display */}
       <div className="relative bg-gray-900 rounded-lg overflow-hidden mb-4" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
@@ -377,7 +393,6 @@ const LiveVideoStream = ({
           className="w-full h-full object-cover"
         />
         
-        {/* Overlay Information */}
         {isStreaming && (
           <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm">
             <div className="space-y-1">
@@ -391,7 +406,6 @@ const LiveVideoStream = ({
           </div>
         )}
 
-        {/* Motion Detection Indicator */}
         {isStreaming && currentSession.session_type === 'motion_detection' && (
           <div className="absolute top-4 right-4 space-y-2">
             <div className={`px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
@@ -407,7 +421,6 @@ const LiveVideoStream = ({
               </div>
             </div>
             
-            {/* Auto Capture Toggle */}
             <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -420,12 +433,10 @@ const LiveVideoStream = ({
               </label>
             </div>
             
-            {/* Motion Strength */}
             <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
               Motion: {(videoStats.lastMotionStrength * 100).toFixed(1)}%
             </div>
             
-            {/* Last Motion Time */}
             {lastMotionTime && (
               <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
                 Last Motion: {lastMotionTime.toLocaleTimeString()}
@@ -434,7 +445,6 @@ const LiveVideoStream = ({
           </div>
         )}
 
-        {/* Error Overlay */}
         {cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-600 bg-opacity-75">
             <div className="text-center text-white p-4">
@@ -453,7 +463,6 @@ const LiveVideoStream = ({
           </div>
         )}
 
-        {/* Loading State */}
         {!isStreaming && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75">
             <div className="text-center text-white">
@@ -464,7 +473,6 @@ const LiveVideoStream = ({
         )}
       </div>
 
-      {/* Controls */}
       <div className="flex justify-between items-center">
         <div className="flex space-x-3">
           <button
@@ -487,7 +495,6 @@ const LiveVideoStream = ({
             )}
           </button>
 
-          {/* Toggle Auto Capture */}
           {currentSession?.session_type === 'motion_detection' && (
             <button
               onClick={() => setAutoCapture(!autoCapture)}
@@ -546,7 +553,6 @@ const LiveVideoStream = ({
         </div>
       </div>
 
-      {/* Hidden Canvas for Frame Capture */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   )

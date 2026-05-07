@@ -1,13 +1,17 @@
-// src/utils/apiHelper.js
+// src/utils/apiHelper.ts
 import config from '../config'
+import type { ApiResponse } from '@/types'
 
 class ApiHelper {
+  private baseURL: string
+  private timeout: number
+
   constructor() {
-    this.baseURL = config.BACKEND_URL
-    this.timeout = config.API_TIMEOUT || 30000
+    this.baseURL = (config as any).BACKEND_URL
+    this.timeout = (config as any).API_TIMEOUT || 30000
   }
 
-  async fetchWithTimeout(url, options = {}) {
+  async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
@@ -23,7 +27,7 @@ class ApiHelper {
 
       clearTimeout(timeoutId)
       return response
-    } catch (error) {
+    } catch (error: any) {
       clearTimeout(timeoutId)
       if (error.name === 'AbortError') {
         throw new Error('Request timeout - โปรดลองใหม่อีกครั้ง')
@@ -32,7 +36,7 @@ class ApiHelper {
     }
   }
 
-  async testConnection() {
+  async testConnection(): Promise<ApiResponse<any>> {
     try {
       console.log('🔧 Testing API connection to:', this.baseURL)
       
@@ -48,19 +52,19 @@ class ApiHelper {
         console.error('❌ API connection failed:', response.status, response.statusText)
         return { 
           success: false, 
-          error: `HTTP ${response.status}: ${response.statusText}` 
+          detail: `HTTP ${response.status}: ${response.statusText}` 
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ API connection error:', error)
       return { 
         success: false, 
-        error: error.message 
+        detail: error.message 
       }
     }
   }
 
-  async post(endpoint, data, options = {}) {
+  async post<T = any>(endpoint: string, data: any, options: RequestInit = {}): Promise<T> {
     try {
       const url = `${this.baseURL}${endpoint}`
       
@@ -76,7 +80,7 @@ class ApiHelper {
 
       if (!response.ok) {
         const errorText = await response.text()
-        let errorMessage
+        let errorMessage: string
         
         try {
           const errorData = JSON.parse(errorText)
@@ -95,7 +99,7 @@ class ApiHelper {
     }
   }
 
-  async get(endpoint, options = {}) {
+  async get<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
     try {
       const url = `${this.baseURL}${endpoint}`
       
@@ -106,7 +110,7 @@ class ApiHelper {
 
       if (!response.ok) {
         const errorText = await response.text()
-        let errorMessage
+        let errorMessage: string
         
         try {
           const errorData = JSON.parse(errorText)
@@ -125,7 +129,7 @@ class ApiHelper {
     }
   }
 
-  async put(endpoint, data, options = {}) {
+  async put<T = any>(endpoint: string, data?: any, options: RequestInit = {}): Promise<T> {
     try {
       const url = `${this.baseURL}${endpoint}`
       
@@ -141,7 +145,7 @@ class ApiHelper {
 
       if (!response.ok) {
         const errorText = await response.text()
-        let errorMessage
+        let errorMessage: string
         
         try {
           const errorData = JSON.parse(errorText)

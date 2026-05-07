@@ -1,9 +1,15 @@
-import { useState } from 'react'
+import { useState, FC } from 'react'
 
-const ClassCodeDisplay = ({ classCode, className, onClose }) => {
+interface ClassCodeDisplayProps {
+  classCode: string
+  className: string
+  onClose: () => void
+}
+
+const ClassCodeDisplay: FC<ClassCodeDisplayProps> = ({ classCode, className, onClose }) => {
   const [copied, setCopied] = useState(false)
 
-  const copyToClipboard = async (text) => {
+  const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -36,7 +42,7 @@ const ClassCodeDisplay = ({ classCode, className, onClose }) => {
           title: `เข้าร่วมคลาส ${className}`,
           text: shareMessage
         })
-      } catch (err) {
+      } catch (err: any) {
         if (err.name !== 'AbortError') {
           copyToClipboard(shareMessage)
         }
