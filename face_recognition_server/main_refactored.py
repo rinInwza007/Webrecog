@@ -87,6 +87,12 @@ db_view_helper = DatabaseViewHelper(supabase_manager.get_client())
 
 # ==================== Pydantic Models ====================
 
+class StartStreamRequest(BaseModel):
+    class_id: str
+    teacher_email: str
+    on_time_limit_minutes: int = 15
+    duration_hours: int = 2
+
 class MotionSessionRequest(BaseModel):
     class_id: str
     teacher_email: str
@@ -98,8 +104,12 @@ class MotionSessionRequest(BaseModel):
 class MotionSnapshotRequest(BaseModel):
     session_id: str
     motion_strength: float
-    capture_time: str
+    capture_time: Optional[str] = None
     elapsed_minutes: int = 0
+
+class ManualCheckinRequest(BaseModel):
+    student_email: str
+    status: str = "present"
 
 # ==================== Helper Functions ====================
 
@@ -307,6 +317,7 @@ async def process_motion_snapshot(
         'motion_strength': motion_strength,
         'processing_phase': phase,
         'processing_status': 'processing'
+        
         }
         supabase_manager.save_motion_capture(capture_log)
         
@@ -718,6 +729,52 @@ async def get_motion_session_live_stats(session_id: str):
         
     except Exception as e:
         logger.error(f"Error getting live motion stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Real-Time Stream Endpoints (Aliases for TS Compatibility) ====================
+
+@app.post("/api/realtime/start-stream")
+async def start_realtime_stream(
+    class_id: str = Form(...),
+    teacher_email: str = Form(...),
+    on_time_limit_minutes: int = Form(15),
+    duration_hours: int = Form(2)
+):
+    """Alias for start_motion_session to match TypeScript interface"""
+    return await start_motion_session(
+        class_id=class_id,
+        teacher_email=teacher_email,
+        on_time_limit_minutes=on_time_limit_minutes,
+        duration_hours=duration_hours
+    )
+
+@app.post("/api/realtime/{session_id}/manual-checkin")
+async def realtime_manual_checkin(
+    session_id: str,
+    student_email: str = Form(...),
+    status: str = Form("present")
+):
+    """Alias for motion_manual_checkin to match TypeScript interface"""
+    return await motion_manual_checkin(session_id, student_email, status)
+
+@app.put("/api/realtime/{session_id}/stop")
+async def realtime_stop_session(session_id: str):
+    """Alias for stop_motion_session to match TypeScript interface"""
+    return await stop_motion_session(session_id)
+
+@app.get("/api/session/{session_id}/attendance")
+async def get_session_attendance(session_id: str):
+    """Get all attendance records for a session to match TypeScript AttendanceListResponse"""
+    try:
+        result = supabase_manager.get_client().table('attendance_records')\
+            .select('*').eq('session_id', session_id).execute()
+        
+        return {
+            "success": True,
+            "data": result.data or []
+        }
+    except Exception as e:
+        logger.error(f"Error fetching attendance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Real-Time Stream Endpoints ====================

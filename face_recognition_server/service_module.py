@@ -466,8 +466,8 @@ class MotionProcessingService:
     async def get_enrolled_students_for_class(self, class_id: str) -> List[str]:
         """Get enrolled student IDs for a class"""
         return self.supabase_mgr.get_enrolled_students_for_class(class_id)
-    
-    async def process_motion_capture(self, item: Dict) -> Dict[str, Any]:
+     
+    async def process_motion_capture(self, item: Dict) -> Dict[str, Any]: #รับ dict จาก main_refactored.py และส่งกลับเป็น dict ที่มีผลลัพธ์การประมวลผลใบหน้าและการบันทึก attendance
         """Process motion-triggered snapshot"""
         try:
             start_time = time.time()
@@ -484,21 +484,22 @@ class MotionProcessingService:
             import io
             import numpy as np
             
-            image_pil = Image.open(io.BytesIO(item['image_data']))
+            image_pil = Image.open(io.BytesIO(item['image_data'])) # แปลง bytes เป็น PIL Image
             if image_pil.mode != 'RGB':
                 image_pil = image_pil.convert('RGB')
             
-            image_array = np.array(image_pil)
+            image_array = np.array(image_pil) # แปลง PIL Image เป็น numpy array เพื่อส่งไปประมวลผลใน AI module ต่อไป
             
             # Get enrolled students
-            enrolled_students = await self.get_enrolled_students_for_class(session_data['class_id'])
+            enrolled_students = await self.get_enrolled_students_for_class(session_data['class_id']) # ดึงรายชื่อ student_id ที่ลงทะเบียนใน class นั้นๆ จากฐานข้อมูล เพื่อใช้ในการตรวจสอบใบหน้าที่ตรวจจับได้ว่าตรงกับใครใน class หรือไม่
             
             if not enrolled_students:
                 logger.warning(f"No enrolled students for motion capture: {session_id}")
                 return {'success': False, 'reason': 'no_students', 'new_records': 0}
             
             # Process faces with advanced matching
-            detected_faces = process_faces_with_advanced_matching(
+            detected_faces = process_faces_with_advanced_matching( # ส่งภาพและข้อมูลที่จำเป็นไปยัง AI module เพื่อประมวลผลและตรวจสอบใบหน้า
+                session_id,
                 image_array,
                 enrolled_students,
                 config,
@@ -510,7 +511,7 @@ class MotionProcessingService:
             # Record attendance
             new_records = 0
             for face_info in detected_faces:
-                success = await self.attendance_service.record_attendance_from_face(
+                success = await self.attendance_service.record_attendance_from_face( # ส่งข้อมูลใบหน้าที่ตรวจจับได้ไปยัง AttendanceRecordingService เพื่อบันทึก attendance
                     face_info, session_id, session_data, item['capture_time'],
                     motion_strength, phase
                 )
