@@ -6,8 +6,8 @@
 # @Software : PyCharm
 
 from torch.utils.data import DataLoader
-from live_ness.src.data_io.dataset_folder import DatasetFolderFT
-from live_ness.src.data_io import transform as trans
+from src.data_io.dataset_folder import DatasetFolderFT
+from src.data_io import transform as trans
 
 
 def get_train_loader(conf):

@@ -14,9 +14,84 @@ from sklearn.metrics.pairwise import cosine_similarity
 from scipy.spatial.distance import cdist
 import faiss
 import threading
+import sys
+import os
+sys.path.append(".")
+from PIL import Image
+from src.anti_spoof_predict import AntiSpoofPredict
+from src.generate_patches import CropImage
+from src.utility import parse_model_name
 
 logger = logging.getLogger(__name__)
 
+MODEL = "./resources/anti_spoof_models"
+model = AntiSpoofPredict(0)
+image_cropper = CropImage() # ขยายขนาดพื้นที่รอบๆใบหน้าเพื่อให้มีข้อมูลมากขึ้นสำหรับการตรวจจับ
+
+
+def check_liveness(image_array):
+    face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
+    print("(top, right, bottom, left)")
+    print("face_locations: ", face_locations)
+    print("(หน้าที่ตรวจพบ):", len(face_locations))
+
+    height, width = image_array.shape[:2] #
+    max_dimension = 1024
+    scale_factor = 1.0
+    if max(height, width) > max_dimension:
+        scale_factor = max(height, width) / max_dimension
+
+    if not face_locations:
+        print("ไม่พบใบหน้าในภาพ")
+        return []
+    
+    real_faces = [] 
+    spoof_faces = []
+    spoof_score_faces = []
+
+    for idx, i in enumerate(face_locations):
+        top, right, bottom, left = i
+        top    = int(top    * scale_factor) # ปรับขนาดตำแหน่งใบหน้าตามสัดส่วนของภาพที่ถูกย่อขนาดลงเพื่อให้ไม่เกิน 1024 พิกเซล
+        right  = int(right  * scale_factor) 
+        bottom = int(bottom * scale_factor) 
+        left   = int(left   * scale_factor)
+        image_bbox = [left, top, right - left, bottom - top] # แปลง format (top, right, bottom, left) → (left, top, width, height) ตามความต้องการของ CropImage
+        #print("image_bbox: ", image_bbox)
+        print(f'หน้าที่ {idx}: top={top} right={right} bottom={bottom} left={left}')
+        print(f'bbox: {image_bbox}')
+
+        frame = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR) # BGR สำหรับ CropImage
+        prediction = np.zeros((1, 3)) # array ขนาด 1x3  [[0.0, 0.0, 0.0]] 
+
+        for model_name in os.listdir(MODEL):
+            h, w, _, scale = parse_model_name(model_name) # ดึงข้อมูลจากชื่อโมเดล เช่น h=128, w=128, scale=2.7  แกะจากชื่อไฟล์ 2.7_80x80_MiniFASNetV2.pth 
+            print(f'model: {model_name} | h:{h} w:{w} scale:{scale}')
+            param = {
+                "org_img": frame, # คือรูปภาพ BGR ที่จะถูก crop
+                "bbox": image_bbox, # ตำแหน่งใบหน้าในรูป (left, top, width, height)
+                "scale": scale, # ขยายขนาดพื้นที่รอบๆใบหน้า
+                "out_w": w, # ขนาดความกว้างของภาพที่ถูก crop และปรับขนาดให้ตรงกับ input ของโมเดล
+                "out_h": h, # ขนาดความสูงของภาพที่ถูก crop และปรับขนาดให้ตรงกับ input ของโมเดล
+                "crop": True, # True — crop เฉพาะส่วนหน้าออกมา False — ไม่ crop แค่ปรับขนาดทั้งภาพให้ตรงกับ input ของโมเดล
+            }
+
+            if scale is None:
+                param["crop"] = False
+            img_crop = image_cropper.crop(**param)
+            #cv2.imwrite(f'crop_face{idx}_{model_name}.jpg', img_crop)
+            prediction = prediction + model.predict(img_crop, os.path.join(MODEL, model_name))
+        print("prediction:", prediction)
+        label = np.argmax(prediction) # หาค่าที่มีค่าสูงสุดใน prediction เพื่อระบุว่าเป็น REAL หรือ SPOOF
+        score = float(prediction[0][label] / 2) 
+        print(f'label: {label} | score: {score}')
+        if label == 1: # ถ้า label เป็น 1 แสดงว่าเป็นใบหน้าจริง นอกนั้นเป็นใบหน้าปลอม
+            real_faces.append(i)
+        else:
+            spoof_faces.append(i)
+            spoof_score_faces.append(round(score, 4))
+            #spoof_faces.append({"score": round(score, 2)})
+
+    return real_faces, spoof_faces, spoof_score_faces
 
 class FaceTracker:
     """Track faces across frames using centroid tracking"""
@@ -177,7 +252,7 @@ class FaceEmbeddingProcessor:
             return embedding
     
     @staticmethod
-    def detect_faces_in_image(image_array: np.ndarray, model: str = "auto", motion_strength: float = 0.5) -> List[Tuple]:
+    def detect_faces_in_image(image_array: np.ndarray, model: str = "auto", motion_strength: float = 0.5) -> List[Tuple]: # ฟังก์ชันตรวจจับใบหน้า
         """
         Detect faces in image with dynamic model selection
         model: "hog" (fast), "cnn" (accurate), or "auto" (dynamic)
@@ -221,7 +296,7 @@ class FaceEmbeddingProcessor:
 
                 return []
             
-            encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=num_jitters)
+            encodings = face_recognition.face_encodings(image_array, face_locations, num_jitters=num_jitters) #ใช้ฟังชัน face_encodings จากไลบรารี face_recognition ในการแปลงใบหน้าที่ตรวจจับได้เป็นเวกเตอร์ตัวเลขที่เรียกว่า "face encoding" ซึ่งจะใช้ในการเปรียบเทียบกับข้อมูลใบหน้าที่ลงทะเบียนไว้ในระบบ
             logger.debug(f"🧠 Extracted {len(encodings)} face encodings")
             return encodings
             
@@ -722,7 +797,7 @@ class AdvancedFaceEmbeddingManager:
             return None
 
 
-def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_students: List[str],
+def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_students: List[str], #image_array: np.ndarray รูปเต็ม
                                         config: Dict, motion_strength: float = 0.5,
                                         embedding_manager=None, use_advanced_similarity: bool = True) -> List[Dict]:
     """Face processing with advanced similarity calculation"""
@@ -739,15 +814,20 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
             
         logger.info(f"🔍 Advanced processing with {len(enrolled_students)} enrolled students")
         
-        # Detect faces
-        face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
-        
-        if not face_locations:
+        # Detect faces แคปชันการตรวจจับใบหน้าพร้อมการเลือกโมเดลแบบไดนามิก
+        #face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog") #ใช้ฟังชัน detect_faces_in_image จากไฟล์ ai_module.py ในการตรวจจับใบหน้า โดยใช้โมเดล HOG
+        face_locations_real, face_locations_spoof ,spoof_scores= check_liveness(image_array) #ค้นหาใบหน้าที่ตรวจจับได้และแยกแยะระหว่างใบหน้าจริงและใบหน้าปลอม (spoof) โดยใช้ฟังก์ชัน check_liveness ซึ่งจะคืนค่าเป็นสองรายการ: face_locations_real สำหรับใบหน้าจริง และ face_locations_spoof สำหรับใบหน้าปลอม
+        # ได้ลิส โลเคชันใบหน้าออกมา
+        print("result_real:", face_locations_real)
+        print("result_spoof:", face_locations_spoof)
+        print("spoof_scores:", spoof_scores)
+
+        if not face_locations_real:
             logger.info("❌ No faces detected")
             return []
         
-        # Extract encodings
-        face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations, num_jitters=2)
+        # Extract encodings # สร้าง embedding
+        face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations_real, num_jitters=2) #ใช้ฟังชัน extract_face_encodings จากไฟล์ ai_module.py ในการแปลงใบหน้าที่ตรวจจับได้เป็นเวกเตอร์ตัวเลขที่เรียกว่า "face encoding" ซึ่งจะใช้ในการเปรียบเทียบกับข้อมูลใบหน้าที่ลงทะเบียนไว้ในระบบ
         
         if not face_encodings:
             logger.warning("❌ No face encodings generated")
@@ -756,7 +836,7 @@ def process_faces_with_advanced_matching(image_array: np.ndarray, enrolled_stude
         detected_faces = []
         base_threshold = config.get('face_threshold', 0.6)
         
-        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations)):
+        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations_real)): #วนลูปผ่านใบหน้าที่ตรวจจับได้และการเข้ารหัสที่สอดคล้องกัน
             logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
             
             norm_encoding = FaceEmbeddingProcessor.normalize_embedding(encoding)
