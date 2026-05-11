@@ -39,55 +39,61 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const fetchAppUser = async (userId: string) => {
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', userId)
+        .single()
+
+      if (!userError && userData) {
+        setAppUser(userData as AppUser)
+      } else {
+        setAppUser(null)
+      }
+    } catch (error) {
+      console.error('Error fetching app user:', error)
+      setAppUser(null)
+    }
+  }
+
   useEffect(() => {
     // Get initial session
-    const getSession = async () => {
+    const initAuth = async () => {
+      setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
         const authUser = session?.user ?? null
         setUser(authUser)
 
-        // ดึงข้อมูล user จากตาราง users หากมี
         if (authUser) {
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('user_id', authUser.id)
-            .single()
-
-          if (!userError && userData) {
-            setAppUser(userData as AppUser)
-          }
+          await fetchAppUser(authUser.id)
+        } else {
+          setAppUser(null)
         }
       } catch (error) {
-        console.error('Error getting session:', error)
+        console.error('Error initializing auth:', error)
       } finally {
         setLoading(false)
       }
     }
 
-    getSession()
+    initAuth()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth event:', event)
         const authUser = session?.user ?? null
         setUser(authUser)
 
         if (authUser) {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('user_id', authUser.id)
-            .single()
-
-          if (userData) {
-            setAppUser(userData as AppUser)
-          }
+          await fetchAppUser(authUser.id)
         } else {
           setAppUser(null)
         }
-
+        
         setLoading(false)
       }
     )

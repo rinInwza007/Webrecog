@@ -23,31 +23,25 @@ const LoadingScreen: FC = () => (
 interface ProtectedRouteProps {
   children: ReactNode
   requiredRole?: UserRole
-  isLoading: boolean
-  userRole: UserRole | null
 }
 
 const ProtectedRoute: FC<ProtectedRouteProps> = ({
   children,
-  requiredRole,
-  isLoading,
-  userRole
+  requiredRole
 }) => {
-  if (isLoading) {
+  const { appUser, loading } = useAuth()
+
+  if (loading) {
     return <LoadingScreen />
   }
 
-  if (!userRole) {
+  if (!appUser) {
     return <Navigate to="/" replace />
   }
 
-  if (requiredRole && userRole !== requiredRole) {
+  if (requiredRole && appUser.role !== requiredRole) {
     // Redirect to appropriate dashboard based on role
-    if (userRole === 'teacher') {
-      return <Navigate to="/teacher-dashboard" replace />
-    } else {
-      return <Navigate to="/dashboard" replace />
-    }
+    return <Navigate to={appUser.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />
   }
 
   return <>{children}</>
@@ -60,7 +54,7 @@ interface AuthFlowState {
   userRole: UserRole | null
 }
 
-const AuthFlow: FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
+const AuthFlow: FC = () => {
   const [state, setState] = useState<AuthFlowState>({
     mode: 'login',
     registeredUser: null,
@@ -68,20 +62,19 @@ const AuthFlow: FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
   })
 
   const handleSwitchToRegister = (): void => {
-    setState((prev) => ({
-      ...prev,
-      mode: 'register'
-    }))
+    setState((prev) => ({ ...prev, mode: 'register' }))
   }
 
   const handleSwitchToLogin = (): void => {
-    setState((prev) => ({
-      ...prev,
-      mode: 'login'
-    }))
+    setState((prev) => ({ ...prev, mode: 'login' }))
   }
 
   const handleRegistrationSuccess = (user: any, role: UserRole): void => {
+    if (role === 'teacher') {
+      // Teachers don't need face registration, let AuthContext handle the state change
+      return
+    }
+    
     setState((prev) => ({
       ...prev,
       registeredUser: user,
@@ -91,7 +84,7 @@ const AuthFlow: FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
   }
 
   const handleFaceRegistrationComplete = (): void => {
-    onAuthSuccess()
+    // AuthContext will have updated by now, routing will happen in AppRouter
   }
 
   return (
@@ -114,46 +107,9 @@ const AuthFlow: FC<{ onAuthSuccess: () => void }> = ({ onAuthSuccess }) => {
 
 // Main Router Component
 const AppRouter: FC = () => {
-  const { user, loading } = useAuth()
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
-  const [loadingRole, setLoadingRole] = useState(true)
+  const { appUser, loading } = useAuth()
 
-  useEffect(() => {
-    const fetchUserRole = async (): Promise<void> => {
-      if (!user?.email) {
-        setUserRole(null)
-        setLoadingRole(false)
-        return
-      }
-
-      try {
-        const userEmail = user.email.trim().toLowerCase()
-
-        const { data, error } = await supabase
-          .from('users')
-          .select('role')
-          .ilike('email', userEmail)
-          .limit(1)
-          .single()
-
-        if (error) {
-          console.warn('Error fetching role:', error)
-          setUserRole(null)
-        } else if (data) {
-          setUserRole(data.role as UserRole)
-        }
-      } catch (err) {
-        console.error('Error fetching user role:', err)
-        setUserRole(null)
-      } finally {
-        setLoadingRole(false)
-      }
-    }
-
-    fetchUserRole()
-  }, [user])
-
-  if (loading || loadingRole) {
+  if (loading) {
     return <LoadingScreen />
   }
 
@@ -163,10 +119,10 @@ const AppRouter: FC = () => {
       <Route
         path="/"
         element={
-          user ? (
-            <Navigate to={userRole === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />
+          appUser ? (
+            <Navigate to={appUser.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />
           ) : (
-            <AuthFlow onAuthSuccess={() => window.location.reload()} />
+            <AuthFlow />
           )
         }
       />
@@ -175,11 +131,7 @@ const AppRouter: FC = () => {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute
-            isLoading={loading || loadingRole}
-            userRole={userRole}
-            requiredRole="student"
-          >
+          <ProtectedRoute requiredRole="student">
             <StudentDashboard />
           </ProtectedRoute>
         }
@@ -189,11 +141,7 @@ const AppRouter: FC = () => {
       <Route
         path="/teacher-dashboard"
         element={
-          <ProtectedRoute
-            isLoading={loading || loadingRole}
-            userRole={userRole}
-            requiredRole="teacher"
-          >
+          <ProtectedRoute requiredRole="teacher">
             <EnhancedTeacherDashboard />
           </ProtectedRoute>
         }

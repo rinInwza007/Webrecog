@@ -39,8 +39,7 @@ const Login: FC<LoginProps> = ({ onSwitchToRegister }) => {
       }
 
       console.log('Login success:', email)
-      // redirect ไปหน้า dashboard
-      navigate('/dashboard')
+      // redirect จะถูกจัดการโดย AppRouter อัตโนมัติเมื่อ appUser ใน AuthContext อัปเดต
     } catch (err) {
       console.error('Login error:', err)
       setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ')

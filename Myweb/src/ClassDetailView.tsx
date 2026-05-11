@@ -299,6 +299,78 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
     }))
   }
 
+  const [showExportModal, setShowExportModal] = useState(false)
+
+  const downloadCSV = (csvContent: string, prefix: string) => {
+    const BOM = '\uFEFF'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const fileName = `${prefix}_${classData.subject_name}_${new Date().toLocaleDateString('th-TH').replace(/\//g, '-')}.csv`
+    link.setAttribute('href', url)
+    link.setAttribute('download', fileName)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const exportSummaryToCSV = () => {
+    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', 'อีเมล', 'เซสชันทั้งหมด', 'มาเรียน', 'สาย', 'ขาด', 'ร้อยละการเข้าเรียน']
+    const rows = attendanceData.topStudents.map(student => {
+      const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
+      const present = studentRecords.filter(r => r.status === 'present').length
+      const late = studentRecords.filter(r => r.status === 'late').length
+      const totalSessions = attendanceData.totalSessions
+      const absent = totalSessions - (present + late)
+      const rate = totalSessions > 0 ? ((present + late) / totalSessions * 100).toFixed(2) : '0.00'
+      return [student.student_id, student.name, student.email, totalSessions, present, late, absent, `${rate}%`]
+    })
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+    downloadCSV(csvContent, 'summary')
+    setShowExportModal(false)
+  }
+
+  const exportMatrixToCSV = () => {
+    // 1. Get all sessions sorted by date
+    const sortedSessions = [...attendanceData.sessions].sort((a, b) => 
+      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    )
+
+    // 2. Prepare Headers: Student Info + Dates + Summary
+    const dateHeaders = sortedSessions.map(s => 
+      new Date(s.start_time).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+    )
+    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', ...dateHeaders, 'รวมมา/สาย', 'เปอร์เซ็นต์']
+
+    // 3. Prepare Rows
+    const rows = attendanceData.topStudents.map(student => {
+      const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
+      
+      // Get status for each session
+      const attendanceStatus = sortedSessions.map(session => {
+        const record = studentRecords.find(r => r.session_id === session.id)
+        if (!record) return 'ขาด'
+        return record.status === 'present' ? 'มา' : record.status === 'สาย' ? 'สาย' : 'ขาด'
+      })
+
+      const presentCount = studentRecords.filter(r => r.status === 'present' || r.status === 'late').length
+      const percentage = sortedSessions.length > 0 ? (presentCount / sortedSessions.length * 100).toFixed(0) : '0'
+
+      return [
+        student.student_id,
+        student.name,
+        ...attendanceStatus,
+        presentCount,
+        `${percentage}%`
+      ]
+    })
+
+    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+    downloadCSV(csvContent, 'daily_matrix')
+    setShowExportModal(false)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -339,12 +411,23 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
                 <p className="text-gray-600">รหัสคลาส: {classData.class_code}</p>
               </div>
             </div>
-            <button
-              onClick={() => fetchClassAttendanceData()}
-              className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-lg text-sm transition-colors"
-            >
-              🔄 รีเฟรช
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowExportModal(true)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Export Excel</span>
+              </button>
+              <button
+                onClick={() => fetchClassAttendanceData()}
+                className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg text-sm transition-colors"
+              >
+                🔄 รีเฟรช
+              </button>
+            </div>
           </div>
         </div>
 
@@ -422,6 +505,63 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
           </div>
         </div>
       </div>
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden">
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-bold text-gray-900">ส่งออกข้อมูลการเช็คชื่อ</h3>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <button
+                  onClick={exportSummaryToCSV}
+                  className="group flex items-center p-6 bg-blue-50 hover:bg-blue-600 rounded-2xl transition-all text-left"
+                >
+                  <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-500 rounded-xl flex items-center justify-center mr-4 transition-colors">
+                    <svg className="w-6 h-6 text-blue-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-blue-900 group-hover:text-white">รายงานสรุปผลรายวิชา</h4>
+                    <p className="text-sm text-blue-700 group-hover:text-blue-100">สรุปจำนวนครั้งที่ มา/สาย/ขาด และเปอร์เซ็นต์รวมของนักเรียนแต่ละคน</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={exportMatrixToCSV}
+                  className="group flex items-center p-6 bg-green-50 hover:bg-green-600 rounded-2xl transition-all text-left"
+                >
+                  <div className="w-12 h-12 bg-green-100 group-hover:bg-green-500 rounded-xl flex items-center justify-center mr-4 transition-colors">
+                    <svg className="w-6 h-6 text-green-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-green-900 group-hover:text-white">รายงานตารางเช็คชื่อรายวัน</h4>
+                    <p className="text-sm text-green-700 group-hover:text-green-100">ตารางแสดงสถานะการเข้าเรียนแยกตามวันที่ของนักเรียนทุกคน</p>
+                  </div>
+                </button>
+              </div>
+
+              <div className="mt-8 text-center">
+                <p className="text-xs text-gray-400">ไฟล์ที่ดาวน์โหลดจะเป็นรูปแบบ .csv (Excel) รองรับภาษาไทย</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

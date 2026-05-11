@@ -203,6 +203,18 @@ class SupabaseStateManager:
         except Exception as e:
             logger.error(f"Error updating motion capture: {e}")
             return False
+        
+    def liveness_log(self, spoof_count: int,session_id: str) -> bool:
+        try:
+            log_data = {
+                "spoof_count": spoof_count,
+                "session_id": session_id
+            }
+            result = self.client.table('liveness_detection_logs').insert(log_data).execute()
+            return bool(result.data)
+        except Exception as e:
+            logger.error(f"Error saving liveness log: {e}")
+            return False
 
 
 class CacheManager:
