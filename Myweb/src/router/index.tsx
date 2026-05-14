@@ -71,7 +71,8 @@ const AuthFlow: FC = () => {
 
   const handleRegistrationSuccess = (user: any, role: UserRole): void => {
     if (role === 'teacher') {
-      // Teachers don't need face registration, let AuthContext handle the state change
+      // Teachers don't need face registration, refresh to trigger AppRouter redirect
+      window.location.reload()
       return
     }
     
@@ -84,7 +85,8 @@ const AuthFlow: FC = () => {
   }
 
   const handleFaceRegistrationComplete = (): void => {
-    // AuthContext will have updated by now, routing will happen in AppRouter
+    // Face registration complete, refresh to trigger AppRouter redirect
+    window.location.reload()
   }
 
   return (

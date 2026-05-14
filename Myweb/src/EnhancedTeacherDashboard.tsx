@@ -562,18 +562,23 @@ const EnhancedTeacherDashboard: FC = () => {
   }
 
   return ( 
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen">
       {/* Header */}
-      <header className="bg-white shadow-lg border-b border-blue-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900"><img src={image} alt="Logo" className="h-24 w-24 inline-block mr-3" /> แดชบอร์ดอาจารย์</h1>
-              <p className="text-gray-600 mt-1">ยินดีต้อนรับ - {user?.user_metadata?.full_name || user?.email}</p>
+      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+                <img src={image} alt="Logo" className="h-14 w-14 object-contain" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-gray-900">แดชบอร์ดอาจารย์</h1>
+                <p className="text-gray-500 text-sm font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
+              </div>
             </div>
             <button
               onClick={handleSignOut}
-              className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2 shadow-md"
+              className="apple-button-secondary py-2 px-5 text-sm flex items-center space-x-2 border-red-100 hover:bg-red-50 hover:text-red-600 transition-all"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -584,36 +589,42 @@ const EnhancedTeacherDashboard: FC = () => {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Current Session Status */}
         {currentSession && (
-          <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg text-white p-6 mb-8">
-            <div className="flex justify-between items-center">
+          <div className="glass-card bg-[#0071e3]/10 border-[#0071e3]/20 p-8 mb-10 overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#0071e3]/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
+            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-xl font-bold">🎯 เซสชันที่ใช้งานอยู่</h3>
-                <p className="mt-1">{currentSession.classes?.subject_name} ({currentSession.classes?.class_code})</p>
-                <p className="text-green-100 text-sm">
-                  เริ่มเมื่อ: {new Date(currentSession.start_time).toLocaleString('th-TH')}
-                </p>
+                <div className="flex items-center space-x-2 mb-2">
+                  <span className="flex h-3 w-3 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                  </span>
+                  <h3 className="text-sm font-bold text-[#0071e3] uppercase tracking-wider">เซสชันที่กำลังดำเนินการ</h3>
+                </div>
+                <h2 className="text-2xl font-semibold text-gray-900">{currentSession.classes?.subject_name}</h2>
+                <p className="text-gray-500 font-medium">รหัสคลาส: {currentSession.classes?.class_code}</p>
               </div>
-              <div className="flex space-x-3">
+              
+              <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => setShowManualCaptureModal(true)}
                   disabled={currentSession.session_type !== 'motion_detection'}
-                  className="bg-white text-green-600 px-4 py-2 rounded-lg hover:bg-green-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="apple-button-secondary bg-white py-2.5 text-sm disabled:opacity-50"
                 >
                   📸 Manual Capture
                 </button>
                 <button
                   onClick={() => setShowSessionDetailsModal(currentSession)}
-                  className="bg-green-700 text-white px-4 py-2 rounded-lg hover:bg-green-800 transition-colors"
+                  className="apple-button-secondary bg-white py-2.5 text-sm"
                 >
-                  📊 ดูรายละเอียด
+                  📊 รายละเอียด
                 </button>
                 <button
                   onClick={() => endSession(currentSession.id)}
                   disabled={actionLoading}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  className="apple-button-primary bg-red-600 hover:bg-red-700 py-2.5 text-sm"
                 >
                   🛑 จบเซสชัน
                 </button>
@@ -621,102 +632,144 @@ const EnhancedTeacherDashboard: FC = () => {
             </div>
               
             {motionStats && currentSession && (
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Motion Events</p>
-                  <p className="text-xl font-bold">{motionStats.live_stats?.motion_events || 0}</p>
+              <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Motion Events</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.live_stats?.motion_events || 0}</p>
                 </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Snapshots</p>
-                  <p className="text-xl font-bold">{motionStats.live_stats?.snapshots_taken || 0}</p>
+                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Snapshots</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.live_stats?.snapshots_taken || 0}</p>
                 </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Efficiency</p>
-                  <p className="text-xl font-bold">
+                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Efficiency</p>
+                  <p className="text-2xl font-semibold text-gray-900">
                     {Math.round((motionStats.live_stats?.snapshot_efficiency || 0) * 100)}%
                   </p>
                 </div>
-                <div className="bg-green-700 rounded-lg p-3">
-                  <p className="text-green-100 text-xs">Queue Size</p>
-                  <p className="text-xl font-bold">{motionStats.processing?.total_queue_size || 0}</p>
+                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Queue Size</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.processing?.total_queue_size || 0}</p>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        <div className="mb-8">
-          <LiveVideoStream
-            currentSession={currentSession}
-            isSessionActive={currentSession !== null}
-            onManualCapture={handleManualCaptureFromVideo}
-            motionStats={motionStats}
-          />
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-lg border border-blue-200 p-6 hover:shadow-xl transition-shadow">
-            <div className="flex items-center">
-              <div className="p-4 bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-              </div>
-              <div className="ml-6">
-                <p className="text-sm font-medium text-gray-600">คลาสที่สอน</p>
-                <p className="text-3xl font-bold text-gray-900">{classes.length}</p>
-              </div>
-            </div>
+        <div className="mb-10">
+          <div className="glass-card p-2 overflow-hidden">
+            <LiveVideoStream
+              currentSession={currentSession}
+              isSessionActive={currentSession !== null}
+              onManualCapture={handleManualCaptureFromVideo}
+              motionStats={motionStats}
+            />
           </div>
-          {/* Add other cards here as needed */}
         </div>
 
-        {/* Quick Actions */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Menu</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg flex items-center justify-center space-x-2"
-            >
-              <span>สร้างคลาสใหม่</span>
-            </button>
-            
-            <button
-              onClick={() => setShowStartSessionModal(true)}
-              disabled={currentSession !== null}
-              className="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 rounded-lg hover:from-green-700 hover:to-green-800 transition-all shadow-lg flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <span>เช็คชื่อ</span>
-            </button>
+        {/* Stats Cards & Quick Actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+          <div className="lg:col-span-1 glass-card p-8 flex flex-col justify-center items-center text-center">
+            <div className="w-20 h-20 bg-[#0071e3]/10 rounded-3xl flex items-center justify-center mb-4">
+              <svg className="w-10 h-10 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <p className="text-gray-500 font-semibold uppercase tracking-wider text-xs mb-1">คลาสที่สอนทั้งหมด</p>
+            <p className="text-5xl font-bold text-gray-900">{classes.length}</p>
+          </div>
+
+          <div className="lg:col-span-2 glass-card p-8">
+            <h3 className="text-xl font-semibold text-gray-900 mb-6">เมนูจัดการ</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="apple-button-primary flex items-center justify-center space-x-3 py-5"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span>สร้างคลาสใหม่</span>
+              </button>
+              
+              <button
+                onClick={() => setShowStartSessionModal(true)}
+                disabled={currentSession !== null}
+                className="apple-button-secondary bg-green-500/10 text-green-700 border-green-200 hover:bg-green-500 hover:text-white flex items-center justify-center space-x-3 py-5 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                <span>เริ่มเช็คชื่อ</span>
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Classes Section */}
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-8">
-          <div className="p-8 border-b border-gray-200">
-            <h2 className="text-2xl font-bold text-gray-900">📚 คลาสเรียนของฉัน</h2>
+        <div className="glass-card overflow-hidden">
+          <div className="p-8 border-b border-white/40 flex justify-between items-center bg-white/30">
+            <h2 className="text-2xl font-semibold tracking-tight text-gray-900">📚 คลาสเรียนของฉัน</h2>
+            {classes.length > 0 && (
+              <span className="bg-[#0071e3]/10 text-[#0071e3] px-3 py-1 rounded-full text-xs font-bold">
+                {classes.length} คลาส
+              </span>
+            )}
           </div>
 
           <div className="p-8">
             {classes.length === 0 ? (
-              <div className="text-center py-16">
-                <button onClick={() => setShowCreateModal(true)} className="bg-blue-600 text-white px-8 py-4 rounded-lg">สร้างคลาสแรก</button>
+              <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
+                <div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 font-medium mb-6">คุณยังไม่มีคลาสเรียนในขณะนี้</p>
+                <button onClick={() => setShowCreateModal(true)} className="apple-button-primary">สร้างคลาสแรกของคุณ</button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {classes.map((cls) => (
                   <div 
                     key={cls.class_id} 
-                    className="border-2 border-gray-200 rounded-xl p-6 hover:shadow-xl cursor-pointer"
+                    className="glass-morphism p-6 hover:shadow-lg hover:border-[#0071e3]/30 transition-all group cursor-pointer"
                     onClick={() => handleClassClick(cls)}
                   >
-                    <h3 className="text-xl font-bold mb-2">{cls.subject_name}</h3>
-                    <p className="text-sm text-gray-600 mb-4">{cls.class_code}</p>
-                    <div className="flex justify-between">
-                       <button onClick={(e) => { e.stopPropagation(); setShowClassCodeModal({code: cls.class_code, name: cls.subject_name}) }} className="text-blue-600">แชร์รหัส</button>
-                       <button onClick={(e) => { e.stopPropagation(); deleteClass(cls.class_id, cls.subject_name) }} className="text-red-600">ลบ</button>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="bg-[#0071e3]/10 p-3 rounded-2xl group-hover:bg-[#0071e3] group-hover:text-white transition-colors">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </div>
+                      <div className="flex space-x-1">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setShowClassCodeModal({code: cls.class_code, name: cls.subject_name}) }}
+                          className="p-2 hover:bg-[#0071e3]/10 rounded-xl text-gray-400 hover:text-[#0071e3] transition-colors"
+                          title="แชร์รหัส"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                          </svg>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); deleteClass(cls.class_id, cls.subject_name) }}
+                          className="p-2 hover:bg-red-50 rounded-xl text-gray-400 hover:text-red-600 transition-colors"
+                          title="ลบ"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</h3>
+                    <p className="text-gray-400 text-sm font-bold mb-4">{cls.class_code}</p>
+                    <div className="flex items-center text-[#0071e3] text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                      <span>เข้าจัดการคลาส</span>
+                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
                     </div>
                   </div>
                 ))}
@@ -726,20 +779,83 @@ const EnhancedTeacherDashboard: FC = () => {
         </div>
       </div>
 
-      {/* Modals - Simplified for the sake of completeness in one go */}
+      {/* Modals */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white p-8 rounded-xl max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">สร้างคลาสใหม่</h3>
-            <input 
-              className="w-full border p-2 mb-4 rounded"
-              placeholder="ชื่อวิชา"
-              value={newClass.subject_name}
-              onChange={(e) => setNewClass({...newClass, subject_name: e.target.value})}
-            />
-            <div className="flex space-x-2">
-              <button onClick={createClass} className="bg-blue-600 text-white px-4 py-2 rounded">สร้าง</button>
-              <button onClick={() => setShowCreateModal(false)} className="bg-gray-300 px-4 py-2 rounded">ยกเลิก</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}></div>
+          <div className="max-w-md w-full glass-card p-10 relative z-10 shadow-2xl scale-100 animate-in fade-in zoom-in duration-300">
+            <h3 className="text-2xl font-semibold tracking-tight text-gray-900 mb-6 text-center">สร้างคลาสใหม่</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ชื่อวิชา</label>
+                <input 
+                  className="w-full apple-input"
+                  placeholder="เช่น วิทยาการคอมพิวเตอร์"
+                  value={newClass.subject_name}
+                  onChange={(e) => setNewClass({...newClass, subject_name: e.target.value})}
+                />
+              </div>
+              <div className="flex space-x-3 pt-4">
+                <button 
+                  onClick={() => setShowCreateModal(false)} 
+                  className="flex-1 apple-button-secondary py-3"
+                >
+                  ยกเลิก
+                </button>
+                <button 
+                  onClick={createClass} 
+                  disabled={actionLoading}
+                  className="flex-1 apple-button-primary py-3"
+                >
+                  {actionLoading ? 'กำลังสร้าง...' : 'สร้างคลาส'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStartSessionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowStartSessionModal(false)}></div>
+          <div className="max-w-md w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
+            <div className="bg-[#0071e3] p-8 text-white text-center">
+              <h3 className="text-2xl font-semibold tracking-tight">เริ่มระบบเช็คชื่อ</h3>
+              <p className="text-white/70 text-sm mt-1">เลือกคลาสเรียนที่ต้องการเช็คชื่อ</p>
+            </div>
+            
+            <div className="p-8">
+              <div className="space-y-3 max-h-80 overflow-y-auto mb-8 pr-2">
+                {classes.length === 0 ? (
+                  <p className="text-center text-gray-400 py-6">ไม่พบคลาสเรียน</p>
+                ) : (
+                  classes.map((cls) => (
+                    <button
+                      key={cls.class_id}
+                      onClick={() => startMotionDetectionSession(cls.class_id)}
+                      disabled={actionLoading}
+                      className="w-full text-left p-5 rounded-2xl border border-gray-100 hover:border-[#0071e3]/30 hover:bg-[#0071e3]/5 transition-all group flex justify-between items-center"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</p>
+                        <p className="text-xs text-gray-400 font-bold">{cls.class_code}</p>
+                      </div>
+                      <div className="bg-[#0071e3]/10 text-[#0071e3] p-2 rounded-xl group-hover:bg-[#0071e3] group-hover:text-white transition-all">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        </svg>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <button
+                onClick={() => setShowStartSessionModal(false)}
+                className="w-full apple-button-secondary py-3 text-sm"
+              >
+                ปิดหน้าต่าง
+              </button>
             </div>
           </div>
         </div>

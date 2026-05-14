@@ -7,11 +7,11 @@ interface Config {
 
 const config: Config = {
   // Backend URL configuration with fallback
-  BACKEND_URL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000',
+  BACKEND_URL: import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_FASTAPI_URL || 'http://localhost:8000',
   
   // Supabase configuration
   SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || "https://xcnyynemxwhementtkdl.supabase.co",
-  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_zcTwxxNxmCmOtzQBt7xQjg_aTmixZzs",
+  SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhjbnl5bmVteHdoZW1lbnR0a2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDY0MDU0MTksImV4cCI6MjAyMTk4MTQxOX0.vW0e3y7rW-f9y-0y7rW-f9y-0y7rW-f9y-0y7rW-f9y",
   
   // API timeout settings
   API_TIMEOUT: 30000, // 30 seconds

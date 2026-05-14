@@ -387,119 +387,220 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen">
+      <div className="max-w-7xl mx-auto px-6 py-10">
         {realTimeUpdate && (
-          <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-bounce">
+          <div className="fixed top-24 right-6 bg-[#0071e3] text-white px-6 py-3 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="flex items-center space-x-2">
-              <span>มีการเช็คชื่อใหม่ {realTimeUpdate.count} รายการ!</span>
+              <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
+              <span className="font-medium">มีการเช็คชื่อใหม่ {realTimeUpdate.count} รายการ!</span>
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-6">
-          <div className="flex items-center justify-between">
+        {/* Header Card */}
+        <div className="glass-card p-8 mb-8">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div className="flex items-center space-x-4">
               <button
                 onClick={onBack}
-                className="flex items-center text-gray-600 hover:text-gray-800 transition-colors"
+                className="p-3 bg-gray-50 text-gray-400 hover:text-gray-900 hover:bg-white rounded-2xl transition-all border border-gray-100 shadow-sm"
               >
-                กลับ
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
               </button>
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">📚 {classData.subject_name}</h1>
-                <p className="text-gray-600">รหัสคลาส: {classData.class_code}</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-gray-900">📚 {classData.subject_name}</h1>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span className="text-gray-400 text-sm font-bold uppercase tracking-wider">Class Code:</span>
+                  <span className="bg-[#0071e3]/10 text-[#0071e3] px-2 py-0.5 rounded-lg text-xs font-black">{classData.class_code}</span>
+                </div>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 w-full md:w-auto">
               <button
                 onClick={() => setShowExportModal(true)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2 shadow-sm"
+                className="flex-1 md:flex-none apple-button-secondary bg-green-500/10 text-green-700 border-green-200 hover:bg-green-500 hover:text-white flex items-center justify-center space-x-2 py-3 px-6"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <span>Export Excel</span>
               </button>
               <button
                 onClick={() => fetchClassAttendanceData()}
-                className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg text-sm transition-colors"
+                className="flex-1 md:flex-none apple-button-secondary py-3 px-6 flex items-center justify-center space-x-2"
               >
-                🔄 รีเฟรช
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>รีเฟรช</span>
               </button>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Stats Cards simplified for brevity */}
-          <div className="bg-white rounded-xl shadow-lg border border-blue-200 p-6">
-            <p className="text-sm text-gray-600">นักเรียนทั้งหมด</p>
-            <p className="text-3xl font-bold text-gray-900">{attendanceData.totalStudents}</p>
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+          <div className="glass-card p-6 border-white/60">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">นักเรียนทั้งหมด</p>
+            <p className="text-3xl font-semibold text-gray-900">{attendanceData.totalStudents}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-lg border border-green-200 p-6">
-            <p className="text-sm text-gray-600">เซสชันทั้งหมด</p>
-            <p className="text-3xl font-bold text-gray-900">{attendanceData.totalSessions}</p>
+          <div className="glass-card p-6 border-white/60">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">เซสชันทั้งหมด</p>
+            <p className="text-3xl font-semibold text-gray-900">{attendanceData.totalSessions}</p>
           </div>
-          <div className="bg-white rounded-xl shadow-lg border border-purple-200 p-6">
-            <p className="text-sm text-gray-600">อัตราการเข้าเรียนเฉลี่ย</p>
-            <p className="text-3xl font-bold text-gray-900">{(attendanceData.averageAttendance * 100).toFixed(1)}%</p>
+          <div className="glass-card p-6 border-[#0071e3]/20 bg-[#0071e3]/5">
+            <p className="text-[10px] text-[#0071e3]/60 font-bold uppercase tracking-wider mb-1">อัตราการเข้าเรียน</p>
+            <p className="text-3xl font-semibold text-[#0071e3]">{(attendanceData.averageAttendance * 100).toFixed(1)}%</p>
           </div>
-          <div className="bg-white rounded-xl shadow-lg border border-orange-200 p-6">
-            <p className="text-sm text-gray-600">การเช็คชื่อทั้งหมด</p>
-            <p className="text-3xl font-bold text-gray-900">{attendanceData.recentAttendance.length}</p>
+          <div className="glass-card p-6 border-white/60">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">การเช็คชื่อทั้งหมด</p>
+            <p className="text-3xl font-semibold text-gray-900">{attendanceData.recentAttendance.length}</p>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {['overview', 'sessions', 'students', 'attendance', 'analytics'].map(tab => (
+        {/* Main Tabs Container */}
+        <div className="glass-card overflow-hidden">
+          <div className="border-b border-white/40 bg-white/30 px-4">
+            <nav className="flex space-x-1">
+              {[
+                {id: 'overview', label: 'ภาพรวม'}, 
+                {id: 'sessions', label: 'เซสชัน'}, 
+                {id: 'students', label: 'นักเรียน'}, 
+                {id: 'attendance', label: 'บันทึกการเช็คชื่อ'}, 
+                {id: 'analytics', label: 'วิเคราะห์'}
+              ].map(tab => (
                 <button
-                  key={tab}
-                  onClick={() => setSelectedTab(tab)}
-                  className={`py-4 px-2 border-b-2 font-medium text-sm capitalize ${
-                    selectedTab === tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                  key={tab.id}
+                  onClick={() => setSelectedTab(tab.id)}
+                  className={`py-5 px-6 font-semibold text-sm transition-all relative ${
+                    selectedTab === tab.id ? 'text-[#0071e3]' : 'text-gray-400 hover:text-gray-600'
                   }`}
                 >
-                  {tab}
+                  {tab.label}
+                  {selectedTab === tab.id && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-[#0071e3] rounded-t-full shadow-[0_-2px_8px_rgba(0,113,227,0.4)]"></div>
+                  )}
                 </button>
               ))}
             </nav>
           </div>
 
-          <div className="p-6">
+          <div className="p-8">
             {selectedTab === 'overview' && (
-              <div className="space-y-6">
-                 {/* Overview content... */}
-                 <h2 className="text-2xl font-bold">ภาพรวม</h2>
-                 <p>ข้อมูลภาพรวมคลาสเรียนและเซสชันล่าสุด</p>
+              <div className="space-y-8 animate-in fade-in duration-500">
+                 <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-semibold tracking-tight">ภาพรวมคลาสเรียน</h2>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="glass-morphism p-8">
+                       <h3 className="text-lg font-semibold mb-4">เซสชันล่าสุด</h3>
+                       <p className="text-gray-500">ติดตามสถานะการเช็คชื่อล่าสุดของคุณได้ที่นี่</p>
+                    </div>
+                    <div className="glass-morphism p-8">
+                       <h3 className="text-lg font-semibold mb-4">สถานะการเช็คชื่อ</h3>
+                       <div className="flex items-center justify-around h-32">
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-gray-400 uppercase">มา</p>
+                            <p className="text-3xl font-bold text-green-500">{attendanceData.attendanceStats.present}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-gray-400 uppercase">สาย</p>
+                            <p className="text-3xl font-bold text-yellow-500">{attendanceData.attendanceStats.late}</p>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
               </div>
             )}
-            {/* Other tabs content implemented similarly... */}
+            
             {selectedTab === 'attendance' && (
-              <div className="space-y-4">
-                 <h2 className="text-2xl font-bold">บันทึกการเช็คชื่อ</h2>
-                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y">
-                       <thead>
+              <div className="space-y-6 animate-in fade-in duration-500">
+                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
+                    <h2 className="text-2xl font-semibold tracking-tight">บันทึกการเช็คชื่อ</h2>
+                    <div className="flex flex-wrap gap-2">
+                       <input 
+                         type="text"
+                         placeholder="ค้นหานักเรียน..."
+                         className="apple-input py-2 text-sm"
+                         value={studentFilter}
+                         onChange={(e) => setStudentFilter(e.target.value)}
+                       />
+                       <select 
+                         className="apple-input py-2 text-sm appearance-none pr-8 bg-no-repeat bg-[right_0.5rem_center]"
+                         value={statusFilter}
+                         onChange={(e) => setStatusFilter(e.target.value)}
+                       >
+                          <option value="all">ทุกสถานะ</option>
+                          <option value="present">มาเรียน</option>
+                          <option value="late">มาสาย</option>
+                       </select>
+                    </div>
+                 </div>
+                 
+                 <div className="overflow-x-auto rounded-3xl border border-gray-100 bg-white/30">
+                    <table className="min-w-full divide-y divide-gray-100">
+                       <thead className="bg-gray-50/50">
                           <tr>
-                             <th>นักเรียน</th>
-                             <th>เวลา</th>
-                             <th>สถานะ</th>
+                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
+                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">เวลาเช็คชื่อ</th>
+                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">สถานะ</th>
+                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">ความแม่นยำ</th>
                           </tr>
                        </thead>
-                       <tbody>
+                       <tbody className="divide-y divide-gray-100">
                           {getPaginatedRecords().map((record, idx) => (
-                             <tr key={idx}>
-                                <td>{record.student_id}</td>
-                                <td>{new Date(record.check_in_time).toLocaleString()}</td>
-                                <td>{record.status}</td>
+                             <tr key={idx} className="hover:bg-white/50 transition-colors group">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="font-semibold text-gray-900 group-hover:text-[#0071e3] transition-colors">{record.student_id}</div>
+                                  <div className="text-xs text-gray-400">{record.student_email}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {new Date(record.check_in_time).toLocaleString('th-TH')}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                                     record.status === 'present' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
+                                   }`}>
+                                      {record.status === 'present' ? 'มาเรียน' : 'มาสาย'}
+                                   </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#0071e3]">
+                                   {record.face_match_score ? `${(record.face_match_score * 100).toFixed(0)}%` : '-'}
+                                </td>
                              </tr>
                           ))}
                        </tbody>
                     </table>
                  </div>
+                 
+                 {getTotalPages() > 1 && (
+                   <div className="flex justify-center space-x-2 mt-8">
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-2 glass-morphism disabled:opacity-30"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                      <span className="flex items-center px-4 font-bold text-sm text-gray-400">
+                        หน้า {currentPage} จาก {getTotalPages()}
+                      </span>
+                      <button 
+                        onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
+                        disabled={currentPage === getTotalPages()}
+                        className="p-2 glass-morphism disabled:opacity-30"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                   </div>
+                 )}
               </div>
             )}
           </div>
@@ -508,14 +609,18 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
 
       {/* Export Modal */}
       {showExportModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowExportModal(false)}></div>
+          <div className="max-w-lg w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="p-8">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-2xl font-bold text-gray-900">ส่งออกข้อมูลการเช็คชื่อ</h3>
+              <div className="flex justify-between items-center mb-8">
+                <div>
+                  <h3 className="text-2xl font-semibold tracking-tight text-gray-900">ส่งออกข้อมูล</h3>
+                  <p className="text-gray-500 text-sm font-medium">เลือกรูปแบบรายงานที่ต้องการดาวน์โหลด</p>
+                </div>
                 <button
                   onClick={() => setShowExportModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-xl transition-all"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -526,37 +631,37 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
               <div className="grid grid-cols-1 gap-4">
                 <button
                   onClick={exportSummaryToCSV}
-                  className="group flex items-center p-6 bg-blue-50 hover:bg-blue-600 rounded-2xl transition-all text-left"
+                  className="group flex items-center p-6 glass-morphism hover:bg-[#0071e3] hover:border-[#0071e3] transition-all text-left"
                 >
-                  <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-500 rounded-xl flex items-center justify-center mr-4 transition-colors">
-                    <svg className="w-6 h-6 text-blue-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                  <div className="w-14 h-14 bg-[#0071e3]/10 group-hover:bg-white rounded-2xl flex items-center justify-center mr-6 transition-all">
+                    <svg className="w-8 h-8 text-[#0071e3] group-hover:text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                     </svg>
                   </div>
                   <div>
-                    <h4 className="font-bold text-blue-900 group-hover:text-white">รายงานสรุปผลรายวิชา</h4>
-                    <p className="text-sm text-blue-700 group-hover:text-blue-100">สรุปจำนวนครั้งที่ มา/สาย/ขาด และเปอร์เซ็นต์รวมของนักเรียนแต่ละคน</p>
+                    <h4 className="font-bold text-gray-900 group-hover:text-white transition-colors">รายงานสรุปผลรายวิชา</h4>
+                    <p className="text-sm text-gray-400 group-hover:text-white/80 transition-colors">สรุปจำนวนครั้งที่ มา/สาย/ขาด รายบุคคล</p>
                   </div>
                 </button>
 
                 <button
                   onClick={exportMatrixToCSV}
-                  className="group flex items-center p-6 bg-green-50 hover:bg-green-600 rounded-2xl transition-all text-left"
+                  className="group flex items-center p-6 glass-morphism hover:bg-green-600 hover:border-green-600 transition-all text-left"
                 >
-                  <div className="w-12 h-12 bg-green-100 group-hover:bg-green-500 rounded-xl flex items-center justify-center mr-4 transition-colors">
-                    <svg className="w-6 h-6 text-green-600 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <div className="w-14 h-14 bg-green-50 group-hover:bg-white rounded-2xl flex items-center justify-center mr-6 transition-all">
+                    <svg className="w-8 h-8 text-green-600 group-hover:text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   </div>
                   <div>
-                    <h4 className="font-bold text-green-900 group-hover:text-white">รายงานตารางเช็คชื่อรายวัน</h4>
-                    <p className="text-sm text-green-700 group-hover:text-green-100">ตารางแสดงสถานะการเข้าเรียนแยกตามวันที่ของนักเรียนทุกคน</p>
+                    <h4 className="font-bold text-gray-900 group-hover:text-white transition-colors">รายงานเช็คชื่อรายวัน</h4>
+                    <p className="text-sm text-gray-400 group-hover:text-white/80 transition-colors">ตารางแสดงสถานะแยกตามวันที่ครบถ้วน</p>
                   </div>
                 </button>
               </div>
 
-              <div className="mt-8 text-center">
-                <p className="text-xs text-gray-400">ไฟล์ที่ดาวน์โหลดจะเป็นรูปแบบ .csv (Excel) รองรับภาษาไทย</p>
+              <div className="mt-8 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">ไฟล์ที่ได้รับจะเป็นรูปแบบ .csv (Excel) รองรับภาษาไทย</p>
               </div>
             </div>
           </div>
