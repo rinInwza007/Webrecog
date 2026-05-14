@@ -37,9 +37,7 @@ interface FaceRegistrationProps {
 const POSES = [
   { id: 'front', label: 'หน้าตรง', icon: '👤' },
   { id: 'left', label: 'หันซ้าย', icon: '👈' },
-  { id: 'right', label: 'หันขวา', icon: '👉' },
-  { id: 'up', label: 'เงยหน้า', icon: '👆' },
-  { id: 'down', label: 'ก้มหน้า', icon: '👇' }
+  { id: 'right', label: 'หันขวา', icon: '👉' }
 ]
 
 const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
@@ -191,86 +189,88 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 to-purple-100 p-4">
-      <div className="max-w-4xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="max-w-4xl w-full glass-card overflow-hidden">
         <div className="md:flex">
           {/* Left Side: Camera & Capture */}
-          <div className="md:w-2/3 p-6 bg-gray-900 flex flex-col items-center justify-center relative min-h-[400px]">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`w-full h-full object-cover rounded-lg ${currentStep === 0 ? '' : ''}`}
-              style={{ transform: 'scaleX(-1)' }} // Mirror for user
-            />
-            <canvas ref={canvasRef} className="hidden" />
-            
-            {/* Guide Overlay */}
-            <div className="absolute inset-0 border-4 border-dashed border-white/30 rounded-lg pointer-events-none m-8"></div>
-            
-            {/* Pose Instruction Overlay */}
-            <div className="absolute top-10 left-0 right-0 text-center">
-              <span className="bg-black/60 text-white px-6 py-2 rounded-full text-xl font-bold backdrop-blur-sm">
-                ท่าทางที่ {currentStep + 1}: {POSES[currentStep].label} {POSES[currentStep].icon}
-              </span>
+          <div className="md:w-2/3 p-8 bg-black/5 flex flex-col items-center justify-center relative min-h-[500px]">
+            <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-inner bg-black">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+                style={{ transform: 'scaleX(-1)' }} // Mirror for user
+              />
+              
+              {/* Guide Overlay */}
+              <div className="absolute inset-0 border-[20px] border-black/40 rounded-2xl pointer-events-none"></div>
+              <div className="absolute inset-10 border-2 border-white/30 border-dashed rounded-full pointer-events-none"></div>
+              
+              {/* Pose Instruction Overlay */}
+              <div className="absolute top-6 left-0 right-0 text-center">
+                <span className="bg-white/20 backdrop-blur-md text-white px-6 py-2 rounded-full text-lg font-medium border border-white/20">
+                  {POSES[currentStep].label} {POSES[currentStep].icon}
+                </span>
+              </div>
             </div>
 
             <button
               onClick={capturePhoto}
               disabled={uploading || !cameraActive}
-              className="absolute bottom-10 bg-white text-gray-900 w-20 h-20 rounded-full flex items-center justify-center shadow-lg hover:scale-110 active:scale-95 transition-all disabled:opacity-50"
+              className="absolute bottom-12 bg-white/90 backdrop-blur-md text-gray-900 w-20 h-20 rounded-full flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all disabled:opacity-50 border border-white/50"
             >
-              <div className="w-16 h-16 border-4 border-gray-900 rounded-full"></div>
+              <div className="w-14 h-14 border-4 border-gray-900/10 rounded-full bg-white shadow-sm"></div>
             </button>
           </div>
 
           {/* Right Side: Status & Preview */}
-          <div className="md:w-1/3 p-8 flex flex-col">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">ลงทะเบียนใบหน้า</h2>
-            <p className="text-gray-600 mb-6 text-sm">ถ่ายรูปภาพ 5 ท่าทางเพื่อความแม่นยำสูงสุด</p>
+          <div className="md:w-1/3 p-10 flex flex-col">
+            <h2 className="text-2xl font-semibold tracking-tight text-gray-900 mb-2">ลงทะเบียนใบหน้า</h2>
+            <p className="text-gray-500 mb-8 text-sm font-medium">ถ่ายรูปภาพ 3 ท่าทางเพื่อยืนยันตัวตน</p>
 
-            <div className="space-y-4 flex-1">
+            <div className="space-y-3 flex-1">
               {POSES.map((pose, index) => (
                 <div 
                   key={pose.id}
                   onClick={() => capturedPhotos[index] && retakePhoto(index)}
-                  className={`flex items-center p-3 rounded-xl border-2 transition-all cursor-pointer ${
+                  className={`flex items-center p-4 rounded-2xl border transition-all cursor-pointer ${
                     currentStep === index 
-                      ? 'border-indigo-500 bg-indigo-50 shadow-md' 
+                      ? 'border-[#0071e3] bg-[#0071e3]/5 shadow-sm' 
                       : capturedPhotos[index] 
-                        ? 'border-green-500 bg-green-50' 
-                        : 'border-gray-100 bg-gray-50'
+                        ? 'border-green-200 bg-green-50/50' 
+                        : 'border-gray-100 bg-gray-50/50'
                   }`}
                 >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                    capturedPhotos[index] ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-4 text-xs font-bold ${
+                    capturedPhotos[index] ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'
                   }`}>
                     {capturedPhotos[index] ? '✓' : index + 1}
                   </div>
                   <div className="flex-1">
-                    <p className="font-semibold text-sm">{pose.label}</p>
-                    <p className="text-xs text-gray-500">{capturedPhotos[index] ? 'บันทึกแล้ว' : 'ยังไม่ได้ถ่าย'}</p>
+                    <p className="font-semibold text-sm text-gray-800">{pose.label}</p>
+                    <p className="text-xs text-gray-400">{capturedPhotos[index] ? 'บันทึกแล้ว' : 'ยังไม่ได้ถ่าย'}</p>
                   </div>
                   {capturedPhotos[index] && (
                     <img 
                       src={capturedPhotos[index].preview} 
                       alt="preview" 
-                      className="w-12 h-12 rounded-lg object-cover border border-white"
+                      className="w-12 h-12 rounded-xl object-cover border-2 border-white shadow-sm"
                     />
                   )}
                 </div>
               ))}
             </div>
 
-            <div className="mt-8 pt-6 border-t">
+            <div className="mt-8 pt-8 border-t border-gray-100">
               {error && (
-                <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-100">
+                <div className="mb-4 text-xs text-red-600 bg-red-50/50 backdrop-blur-sm p-3 rounded-xl border border-red-100">
                   ⚠️ {error}
                 </div>
               )}
               {success && (
-                <div className="mb-4 text-sm text-green-600 bg-green-50 p-3 rounded-lg border border-green-100">
+                <div className="mb-4 text-xs text-green-600 bg-green-50/50 backdrop-blur-sm p-3 rounded-xl border border-green-100">
                   {success}
                 </div>
               )}
@@ -278,9 +278,16 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
               <button
                 onClick={handleSubmit}
                 disabled={uploading || capturedPhotos.length < POSES.length}
-                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+                className="w-full apple-button-primary py-4"
               >
-                {uploading ? 'กำลังบันทึกข้อมูล...' : 'บันทึกใบหน้าทั้งหมด'}
+                {uploading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full mr-3"></div>
+                    กำลังบันทึกข้อมูล...
+                  </div>
+                ) : (
+                  'บันทึกใบหน้าทั้งหมด'
+                )}
               </button>
             </div>
           </div>
@@ -292,4 +299,4 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
 
 export default FaceRegistration
 
-export default FaceRegistration
+

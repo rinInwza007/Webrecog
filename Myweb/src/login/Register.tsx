@@ -153,24 +153,24 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-lg">
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="max-w-md w-full space-y-8 p-10 glass-card">
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+          <h2 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">
             สมัครสมาชิก
           </h2>
-          <p className="text-gray-600">สร้างบัญชีใหม่สำหรับระบบเช็คชื่อ AI</p>
+          <p className="text-gray-500 font-medium">สร้างบัญชีใหม่สำหรับระบบเช็คชื่อ AI</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+          <div className="bg-red-50/50 backdrop-blur-md border border-red-200 text-red-700 px-4 py-3 rounded-2xl text-sm">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="fullName" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               ชื่อ-นามสกุล *
             </label>
             <input
@@ -180,13 +180,13 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               required
               value={formData.fullName}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input"
               placeholder="กรอกชื่อ-นามสกุล"
             />
           </div>
 
           <div>
-            <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="role" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               ประเภทผู้ใช้ *
             </label>
             <select
@@ -194,7 +194,7 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               name="role"
               value={formData.role}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%236B7280%22%20stroke-width%3D%221.66667%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22/%3E%3C/svg%3E')] bg-[length:20px_20px] bg-[right_1rem_center] bg-no-repeat"
             >
               <option value="student">นักเรียน</option>
               <option value="teacher">อาจารย์</option>
@@ -202,9 +202,9 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
           </div>
 
           <div>
-            <label htmlFor="schoolId" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="schoolId" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               รหัส{formData.role === 'student' ? 'นักเรียน' : 'อาจารย์'}
-              <span className="text-gray-500 text-xs ml-1">(ไม่บังคับ - ระบบจะสร้างให้อัตโนมัติ)</span>
+              <span className="text-gray-400 text-xs ml-1">(ไม่บังคับ - ระบบจะสร้างให้อัตโนมัติ)</span>
             </label>
             <input
               id="schoolId"
@@ -212,19 +212,14 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               type="text"
               value={formData.schoolId}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input"
               placeholder={`เช่น ${formData.role === 'student' ? 'STD001' : 'TCH001'} (หรือปล่อยว่างไว้)`}
               maxLength={20}
             />
-            {formData.fullName && !formData.schoolId && (
-              <p className="text-xs text-gray-500 mt-1">
-                ระบบจะสร้างรหัสให้อัตโนมัติ: {generateSchoolId(formData.fullName, formData.role)}
-              </p>
-            )}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               อีเมล *
             </label>
             <input
@@ -234,13 +229,13 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               required
               value={formData.email}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input"
               placeholder="your@email.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               รหัสผ่าน *
             </label>
             <input
@@ -250,14 +245,14 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               required
               value={formData.password}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input"
               placeholder="••••••••"
               minLength={6}
             />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-600 mb-2 ml-1">
               ยืนยันรหัสผ่าน *
             </label>
             <input
@@ -267,52 +262,20 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
               required
               value={formData.confirmPassword}
               onChange={handleInputChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+              className="w-full apple-input"
               placeholder="••••••••"
               minLength={6}
             />
           </div>
 
-          {/* แสดงข้อมูลที่จะถูกบันทึก */}
-          {formData.fullName && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-green-800 mb-2">ข้อมูลที่จะบันทึก:</h4>
-              <ul className="text-xs text-green-700 space-y-1">
-                <li>• ชื่อ: {formData.fullName}</li>
-                <li>• ประเภท: {formData.role === 'student' ? 'นักเรียน' : 'อาจารย์'}</li>
-                <li>• รหัส: {formData.schoolId || generateSchoolId(formData.fullName, formData.role)}</li>
-                <li>• อีเมล: {formData.email}</li>
-              </ul>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full apple-button-primary mt-4"
           >
             {loading ? (
               <div className="flex items-center justify-center">
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
+                <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full mr-3"></div>
                 กำลังสมัครสมาชิก...
               </div>
             ) : (
@@ -320,26 +283,24 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
             )}
           </button>
 
-          <div className="text-center">
-            <span className="text-gray-600">มีบัญชีแล้ว? </span>
+          <div className="text-center pt-2">
+            <span className="text-gray-500 text-sm">มีบัญชีแล้ว? </span>
             <button
               type="button"
               onClick={onSwitchToLogin}
-              className="text-green-600 hover:text-green-700 font-medium"
+              className="text-[#0071e3] hover:underline font-semibold text-sm"
             >
               เข้าสู่ระบบ
             </button>
           </div>
         </form>
 
-        {/* ข้อมูลเพิ่มเติม */}
-        <div className="bg-gray-50 rounded-lg p-4 text-xs text-gray-600">
-          <h4 className="font-medium text-gray-800 mb-2">หมายเหตุ:</h4>
+        <div className="bg-white/30 backdrop-blur-sm border border-white/40 rounded-2xl p-4 text-xs text-gray-500">
+          <h4 className="font-semibold text-gray-700 mb-2 uppercase tracking-wider">หมายเหตุ:</h4>
           <ul className="space-y-1">
             <li>• รหัสนักเรียน/อาจารย์จะใช้สำหรับระบบ Face Recognition</li>
             <li>• ถ้าไม่กรอกรหัส ระบบจะสร้างให้อัตโนมัติ</li>
             <li>• นักเรียนจะต้องลงทะเบียนใบหน้าในขั้นตอนถัดไป</li>
-            <li>• อาจารย์สามารถใช้งานระบบได้ทันที</li>
           </ul>
         </div>
       </div>

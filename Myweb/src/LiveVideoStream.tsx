@@ -354,37 +354,44 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
 
   if (!isSessionActive || !currentSession) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">📹 Live Video Stream</h3>
-        <div className="bg-gray-100 rounded-lg p-8 text-center">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      <div className="glass-card p-8 text-center bg-white/30">
+        <div className="w-20 h-20 bg-white/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
+          <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
-          <p className="text-gray-600">ไม่มีเซสชันที่ใช้งานอยู่</p>
-          <p className="text-sm text-gray-500">เริ่ม Motion Detection Session เพื่อดู live video</p>
         </div>
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">📹 Live Video Stream</h3>
+        <p className="text-gray-500 font-medium">ไม่มีเซสชันที่ใช้งานอยู่</p>
+        <p className="text-xs text-gray-400 mt-2">เริ่ม Motion Detection Session เพื่อดู live video</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-gray-900">📹 Live Video Stream</h3>
+    <div className="glass-card p-8 bg-white/30">
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center space-x-3">
+          <div className="bg-[#0071e3]/10 p-2.5 rounded-2xl">
+            <svg className="w-6 h-6 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900">Live Video Stream</h3>
+        </div>
         {isStreaming && (
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-1">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-sm text-red-600 font-medium">LIVE</span>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 bg-red-50 px-3 py-1 rounded-full border border-red-100">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+              <span className="text-[10px] text-red-600 font-black uppercase tracking-widest">LIVE</span>
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-xs text-gray-400 font-bold uppercase tracking-tight">
               {videoStats.fps} FPS
             </div>
           </div>
         )}
       </div>
 
-      <div className="relative bg-gray-900 rounded-lg overflow-hidden mb-4" style={{ aspectRatio: '16/9' }}>
+      <div className="relative bg-black rounded-3xl overflow-hidden mb-8 shadow-2xl ring-1 ring-white/20" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
           autoPlay
@@ -394,161 +401,145 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
         />
         
         {isStreaming && (
-          <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-sm">
-            <div className="space-y-1">
-              <div>📊 Session: {currentSession.classes?.subject_name || 'Unknown'}</div>
-              <div>🎯 Type: {currentSession.session_type || 'Unknown'}</div>
-              {motionStats && (
-                <div>⚡ Motion Events: {motionStats.live_stats?.motion_events || 0}</div>
-              )}
-              <div>🎥 Resolution: {videoRef.current?.videoWidth || 0}x{videoRef.current?.videoHeight || 0}</div>
+          <div className="absolute top-6 left-6 space-y-2">
+            <div className="bg-black/40 backdrop-blur-md text-white px-4 py-3 rounded-2xl text-xs border border-white/10 shadow-lg">
+              <div className="space-y-1.5 font-medium">
+                <div className="flex items-center">
+                  <span className="text-white/50 mr-2 uppercase tracking-widest text-[9px]">Subject</span>
+                  {currentSession.classes?.subject_name || 'Unknown'}
+                </div>
+                <div className="flex items-center">
+                  <span className="text-white/50 mr-2 uppercase tracking-widest text-[9px]">Type</span>
+                  {currentSession.session_type || 'Unknown'}
+                </div>
+                {motionStats && (
+                  <div className="flex items-center">
+                    <span className="text-white/50 mr-2 uppercase tracking-widest text-[9px]">Motion</span>
+                    {motionStats.live_stats?.motion_events || 0} Events
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
 
         {isStreaming && currentSession.session_type === 'motion_detection' && (
-          <div className="absolute top-4 right-4 space-y-2">
-            <div className={`px-3 py-2 rounded-lg text-sm transition-all duration-300 ${
+          <div className="absolute top-6 right-6 space-y-3 flex flex-col items-end">
+            <div className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border backdrop-blur-md transition-all duration-300 shadow-lg ${
               motionDetected 
-                ? 'bg-red-600 bg-opacity-90 text-white animate-pulse' 
-                : 'bg-green-600 bg-opacity-80 text-white'
+                ? 'bg-red-500/80 border-red-400 text-white animate-pulse' 
+                : 'bg-green-500/80 border-green-400 text-white'
             }`}>
               <div className="flex items-center space-x-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  motionDetected ? 'bg-red-300 animate-bounce' : 'bg-green-300 animate-pulse'
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  motionDetected ? 'bg-white animate-bounce' : 'bg-white animate-pulse'
                 }`}></div>
-                <span>{motionDetected ? 'Motion Detected!' : 'Motion Detection Active'}</span>
+                <span>{motionDetected ? 'Motion Detected!' : 'Detection Active'}</span>
               </div>
             </div>
             
-            <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
-              <label className="flex items-center space-x-2 cursor-pointer">
+            <div className="bg-black/40 backdrop-blur-md text-white px-4 py-2 rounded-2xl text-[10px] font-bold border border-white/10 shadow-lg">
+              MOTION: {(videoStats.lastMotionStrength * 100).toFixed(1)}%
+            </div>
+            
+            <div className="bg-black/40 backdrop-blur-md text-white px-4 py-2 rounded-2xl border border-white/10 shadow-lg">
+              <label className="flex items-center space-x-2 cursor-pointer group">
+                <div className={`w-8 h-4 rounded-full transition-colors relative ${autoCapture ? 'bg-[#0071e3]' : 'bg-white/20'}`}>
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${autoCapture ? 'left-4.5' : 'left-0.5'}`}></div>
+                </div>
                 <input
                   type="checkbox"
                   checked={autoCapture}
                   onChange={(e) => setAutoCapture(e.target.checked)}
-                  className="w-3 h-3"
+                  className="hidden"
                 />
-                <span>Auto Capture</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest">Auto Capture</span>
               </label>
             </div>
-            
-            <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
-              Motion: {(videoStats.lastMotionStrength * 100).toFixed(1)}%
-            </div>
-            
-            {lastMotionTime && (
-              <div className="bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg text-xs">
-                Last Motion: {lastMotionTime.toLocaleTimeString()}
-              </div>
-            )}
           </div>
         )}
 
         {cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-red-600 bg-opacity-75">
-            <div className="text-center text-white p-4">
-              <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L5.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <p className="font-medium">เกิดข้อผิดพลาดกับกล้อง</p>
-              <p className="text-sm opacity-90">{cameraError}</p>
+          <div className="absolute inset-0 flex items-center justify-center bg-red-500/80 backdrop-blur-sm">
+            <div className="text-center text-white p-8 glass-morphism border-white/20 bg-white/10 max-w-sm">
+              <div className="bg-white/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L5.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <p className="font-bold text-lg mb-2">Camera Error</p>
+              <p className="text-sm text-white/80 mb-6">{cameraError}</p>
               <button 
                 onClick={startVideoStream}
-                className="mt-2 bg-white text-red-600 px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="w-full bg-white text-red-600 px-6 py-3 rounded-2xl font-bold hover:bg-gray-100 transition-all"
               >
-                ลองใหม่
+                ลองใหม่อีกครั้ง
               </button>
             </div>
           </div>
         )}
 
         {!isStreaming && !cameraError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-75">
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/60 backdrop-blur-sm">
             <div className="text-center text-white">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-              <p>กำลังเชื่อมต่อกล้อง...</p>
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-white/20 border-t-white mx-auto mb-4"></div>
+              <p className="text-sm font-medium tracking-wide">กำลังเชื่อมต่อกล้อง...</p>
             </div>
           </div>
         )}
       </div>
 
-      <div className="flex justify-between items-center">
-        <div className="flex space-x-3">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={takeManualCapture}
             disabled={!isStreaming || isCapturing}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            className="apple-button-primary py-3 px-6 flex items-center space-x-2"
           >
             {isCapturing ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>กำลังถ่าย...</span>
-              </>
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/30 border-t-white"></div>
             ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                </svg>
-                <span>📸 Manual Capture</span>
-              </>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+              </svg>
             )}
+            <span>Manual Capture</span>
           </button>
 
-          {currentSession?.session_type === 'motion_detection' && (
-            <button
-              onClick={() => setAutoCapture(!autoCapture)}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
-                autoCapture 
-                  ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : 'bg-gray-600 text-white hover:bg-gray-700'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span>{autoCapture ? 'Auto ON' : 'Auto OFF'}</span>
-            </button>
-          )}
-
-          {!isStreaming && (
-            <button
-              onClick={startVideoStream}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>เปิดกล้อง</span>
-            </button>
-          )}
-
-          {isStreaming && (
+          {isStreaming ? (
             <button
               onClick={stopVideoStream}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
+              className="apple-button-secondary bg-red-50 text-red-600 border-red-100 hover:bg-red-500 hover:text-white py-3 px-6 flex items-center space-x-2"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9l6 6m0-6l-6 6" />
               </svg>
               <span>ปิดกล้อง</span>
             </button>
+          ) : (
+            <button
+              onClick={startVideoStream}
+              className="apple-button-secondary bg-green-50 text-green-600 border-green-100 hover:bg-green-500 hover:text-white py-3 px-6 flex items-center space-x-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h1m4 0h1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>เปิดกล้อง</span>
+            </button>
           )}
         </div>
 
-        <div className="text-sm text-gray-600 space-y-1 text-right">
-          {isStreaming && (
-            <>
-              <div>FPS: {videoStats.fps}</div>
-              <div>Frames Sent: {videoStats.framesSent}</div>
-              {videoStats.lastFrameTime && (
-                <div>Last Frame: {videoStats.lastFrameTime}</div>
-              )}
-              {currentSession?.session_type === 'motion_detection' && (
-                <div>Motion: {(videoStats.lastMotionStrength * 100).toFixed(1)}%</div>
-              )}
-            </>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full md:w-auto">
+          <div className="text-center md:text-right">
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">Frames Sent</p>
+            <p className="text-lg font-semibold text-gray-900">{videoStats.framesSent}</p>
+          </div>
+          {videoStats.lastFrameTime && (
+            <div className="text-center md:text-right">
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">Last Sync</p>
+              <p className="text-lg font-semibold text-gray-900">{videoStats.lastFrameTime}</p>
+            </div>
           )}
         </div>
       </div>
