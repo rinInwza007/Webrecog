@@ -48,7 +48,7 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
   })
 
   const FASTAPI_URL = config.BACKEND_URL
-  const COOLDOWN_MS = 10000
+  const COOLDOWN_MS = 3000
 
   useEffect(() => {
     if (isSessionActive && currentSession) {
@@ -60,7 +60,7 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
     return () => {
       stopVideoStream()
     }
-  }, [isSessionActive, currentSession])
+  }, [isSessionActive, currentSession?.id])
 
   useEffect(() => {
     if (isStreaming && currentSession) {
@@ -72,7 +72,7 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
     return () => {
       stopFrameCapture()
     }
-  }, [isStreaming, currentSession, autoCapture])
+  }, [isStreaming, currentSession?.id, autoCapture])
 
   useEffect(() => {
     if (!isStreaming) return

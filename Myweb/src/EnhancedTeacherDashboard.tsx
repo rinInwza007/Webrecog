@@ -70,7 +70,7 @@ const EnhancedTeacherDashboard: FC = () => {
 
   useEffect(() => {
     fetchTeacherData()
-    const interval = setInterval(fetchTeacherData, 30000) // Refresh every 30s
+    const interval = setInterval(fetchTeacherData, 8000) // Refresh every 8s
     return () => clearInterval(interval)
   }, [user])
 
@@ -165,10 +165,10 @@ const EnhancedTeacherDashboard: FC = () => {
     }
   }
 
-  const fetchAttendanceRecords = async (sessionId: string) => {
+  const fetchAttendanceRecords = async (sessionId: string) => { //
     try {
       const { data: records, error } = await supabase
-        .from('attendance_records')
+        .from('attendance_records') // ดึงจากตาราง attendance_records แทน student_attendance เพื่อให้ได้ข้อมูลล่าสุดของแต่ละ check-in
         .select('*')
         .eq('session_id', sessionId)
         .order('check_in_time', { ascending: false })
@@ -449,7 +449,8 @@ const EnhancedTeacherDashboard: FC = () => {
         const errorData = await response.json()
         throw new Error(errorData.detail || `Failed to end session (${response.status})`)
       }
-
+      setCurrentSession(null)      
+      setAttendanceRecords([])    
       alert(`✅ จบเซสชันสำเร็จ!`)
       fetchTeacherData()
       
@@ -699,7 +700,103 @@ const EnhancedTeacherDashboard: FC = () => {
             )}
           </div>
         )}
+        {currentSession && (
+        <div className="glass-card overflow-hidden mb-10">
+          <div className="p-6 border-b border-white/40 bg-white/30 flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </span>
+              <h2 className="text-xl font-semibold text-gray-900">นักเรียนที่เช็คชื่อแล้ว</h2>
+            </div>
+            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
+              {attendanceRecords.length} คน
+            </span>
+          </div>
 
+          <div className="p-6">
+            {attendanceRecords.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <div className="text-4xl mb-3">👀</div>
+                <p className="font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
+                <p className="text-sm">ระบบจะอัปเดตอัตโนมัติทุก 8 วินาที</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-96 overflow-y-auto pr-1">
+                {attendanceRecords.map((record, index) => (
+                  <div
+                    key={record.id || index}
+                    className="flex items-center space-x-4 p-4 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/60"
+                  >
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-sm flex-shrink-0">
+                      {record.users?.full_name?.charAt(0) || '?'}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">
+                        {record.users?.full_name || 'Unknown'}
+                      </p>
+                      <p className="text-xs text-gray-400">{record.users?.school_id || 'N/A'}</p>
+                      
+                      {/* Accuracy Bar */}
+                      {record.face_match_score != null && (
+                        <div className="mt-1.5">
+                          <p className="text-xs text-gray-400 mb-1">ความแม่นยำ</p>
+                          <div className="flex items-center space-x-2">
+                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  record.face_match_score >= 0.8
+                                    ? 'bg-green-500'
+                                    : record.face_match_score >= 0.6
+                                    ? 'bg-yellow-400'
+                                    : 'bg-red-400'
+                                }`}
+                                style={{ width: `${Math.round(record.face_match_score * 100)}%` }}
+                              />
+                            </div>
+                            <span className={`text-xs font-bold ${
+                              record.face_match_score >= 0.8
+                                ? 'text-green-600'
+                                : record.face_match_score >= 0.6
+                                ? 'text-yellow-600'
+                                : 'text-red-500'
+                            }`}>
+                              {Math.round(record.face_match_score * 100)}%
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Status + Time */}
+                    <div className="text-right flex-shrink-0">
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                        record.status === 'present'
+                          ? 'bg-green-100 text-green-700'
+                          : record.status === 'late'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {record.status === 'present' ? 'มา' : record.status === 'late' ? 'สาย' : record.status}
+                      </span>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {record.check_in_time
+                          ? record.check_in_time.split('T')[1]?.slice(0, 5) 
+                            || record.check_in_time.split(' ')[1]?.slice(0, 5)
+                          : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
         <div className="mb-10">
           <div className="glass-card p-2 overflow-hidden">
             <LiveVideoStream

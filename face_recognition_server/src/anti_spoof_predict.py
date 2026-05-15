@@ -13,9 +13,9 @@ import numpy as np
 import torch.nn.functional as F
 
 
-from live_ness.src.model_lib.MiniFASNet import MiniFASNetV1, MiniFASNetV2,MiniFASNetV1SE,MiniFASNetV2SE
-from live_ness.src.data_io import transform as trans
-from live_ness.src.utility import get_kernel, parse_model_name
+from src.model_lib.MiniFASNet import MiniFASNetV1, MiniFASNetV2,MiniFASNetV1SE,MiniFASNetV2SE
+from src.data_io import transform as trans
+from src.utility import get_kernel, parse_model_name
 
 MODEL_MAPPING = {
     'MiniFASNetV1': MiniFASNetV1,
@@ -27,10 +27,8 @@ MODEL_MAPPING = {
 
 class Detection:
     def __init__(self):
-        # ใช้พาธสัมพัทธ์กับไฟล์นี้เพื่อให้โหลดโมเดลได้ถูกต้องไม่ว่าจะเรียกจากโฟลเดอร์ไหน
-        base_path = os.path.dirname(__file__)
-        caffemodel = os.path.join(base_path, "resources/detection_model/Widerface-RetinaFace.caffemodel")
-        deploy = os.path.join(base_path, "resources/detection_model/deploy.prototxt")
+        caffemodel = "./resources/detection_model/Widerface-RetinaFace.caffemodel"
+        deploy = "./resources/detection_model/deploy.prototxt"
         self.detector = cv2.dnn.readNetFromCaffe(deploy, caffemodel)
         self.detector_confidence = 0.6
 

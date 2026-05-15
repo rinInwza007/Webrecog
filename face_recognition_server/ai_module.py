@@ -17,14 +17,14 @@ import sys
 import os
 sys.path.append(".")
 from PIL import Image
-from live_ness.src.anti_spoof_predict import AntiSpoofPredict
-from live_ness.src.generate_patches import CropImage
-from live_ness.src.utility import parse_model_name
+from src.anti_spoof_predict import AntiSpoofPredict
+from src.generate_patches import CropImage
+from src.utility import parse_model_name
 from state_module import supabase_manager
 
 logger = logging.getLogger(__name__)
 
-MODEL = "./live_ness/src/resources/anti_spoof_models"
+MODEL = "./resources/anti_spoof_models"
 model = AntiSpoofPredict(0)
 image_cropper = CropImage() # ขยายขนาดพื้นที่รอบๆใบหน้าเพื่อให้มีข้อมูลมากขึ้นสำหรับการตรวจจับ
 
