@@ -467,7 +467,6 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
             <nav className="flex space-x-1">
               {[
                 {id: 'overview', label: 'ภาพรวม'}, 
-                {id: 'sessions', label: 'เซสชัน'}, 
                 {id: 'students', label: 'นักเรียน'}, 
                 {id: 'attendance', label: 'บันทึกการเช็คชื่อ'}, 
                 {id: 'analytics', label: 'วิเคราะห์'}
@@ -492,27 +491,164 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
             {selectedTab === 'overview' && (
               <div className="space-y-8 animate-in fade-in duration-500">
                  <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-semibold tracking-tight">ภาพรวมคลาสเรียน</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight text-gray-900">ภาพรวมคลาสเรียน</h2>
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="glass-morphism p-8">
-                       <h3 className="text-lg font-semibold mb-4">เซสชันล่าสุด</h3>
-                       <p className="text-gray-500">ติดตามสถานะการเช็คชื่อล่าสุดของคุณได้ที่นี่</p>
+                    <div className="glass-morphism p-8 flex flex-col h-full">
+                       <h3 className="text-lg font-semibold mb-4 text-gray-900">เซสชันล่าสุด</h3>
+                       {attendanceData.sessions.length > 0 ? (
+                         <div className="space-y-4 flex-1">
+                           <div className="p-4 bg-[#0071e3]/5 rounded-2xl border border-[#0071e3]/10">
+                             <p className="text-xs font-bold text-[#0071e3] uppercase mb-1">เซสชันล่าสุดเมื่อ</p>
+                             <p className="text-lg font-semibold text-gray-900">
+                               {new Date(attendanceData.sessions[0].start_time).toLocaleString('th-TH', { 
+                                 dateStyle: 'medium', 
+                                 timeStyle: 'short' 
+                               })}
+                             </p>
+                             <div className="mt-3 flex items-center gap-4">
+                               <div>
+                                 <p className="text-[10px] text-gray-400 font-bold uppercase">เช็คชื่อแล้ว</p>
+                                 <p className="text-xl font-bold text-gray-900">
+                                   {attendanceData.recentAttendance.filter(r => r.session_id === attendanceData.sessions[0].id).length}
+                                 </p>
+                               </div>
+                               <div className="h-8 w-px bg-gray-200"></div>
+                               <div>
+                                 <p className="text-[10px] text-gray-400 font-bold uppercase">สถานะ</p>
+                                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                                   attendanceData.sessions[0].status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
+                                 }`}>
+                                   {attendanceData.sessions[0].status === 'active' ? 'กำลังดำเนินการ' : 'จบแล้ว'}
+                                 </span>
+                               </div>
+                             </div>
+                           </div>
+                           <p className="text-sm text-gray-500">ติดตามสถานะการเช็คชื่อล่าสุดของคุณได้ที่นี่ หรือดูรายละเอียดเพิ่มเติมในแท็บ "บันทึกการเช็คชื่อ"</p>
+                         </div>
+                       ) : (
+                         <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
+                           <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-4">
+                             <svg className="w-8 h-8 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                             </svg>
+                           </div>
+                           <p className="text-gray-400 font-medium">ยังไม่มีประวัติการเช็คชื่อ</p>
+                         </div>
+                       )}
                     </div>
                     <div className="glass-morphism p-8">
-                       <h3 className="text-lg font-semibold mb-4">สถานะการเช็คชื่อ</h3>
-                       <div className="flex items-center justify-around h-32">
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-gray-400 uppercase">มา</p>
-                            <p className="text-3xl font-bold text-green-500">{attendanceData.attendanceStats.present}</p>
+                       <h3 className="text-lg font-semibold mb-6 text-gray-900">สถานะการเช็คชื่อ (ทั้งหมด)</h3>
+                       <div className="flex items-center justify-around h-40">
+                          <div className="text-center group">
+                            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                              <p className="text-3xl font-bold text-green-500">{attendanceData.attendanceStats.present}</p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาเรียน</p>
                           </div>
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-gray-400 uppercase">สาย</p>
-                            <p className="text-3xl font-bold text-yellow-500">{attendanceData.attendanceStats.late}</p>
+                          <div className="text-center group">
+                            <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                              <p className="text-3xl font-bold text-yellow-500">{attendanceData.attendanceStats.late}</p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาสาย</p>
+                          </div>
+                          <div className="text-center group">
+                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                              <p className="text-3xl font-bold text-red-500">
+                                {attendanceData.totalSessions > 0 
+                                  ? (attendanceData.totalStudents * attendanceData.totalSessions) - (attendanceData.attendanceStats.present + attendanceData.attendanceStats.late)
+                                  : 0}
+                              </p>
+                            </div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">ขาดเรียน</p>
                           </div>
                        </div>
                     </div>
                  </div>
+              </div>
+            )}
+
+            {selectedTab === 'students' && (
+              <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <h2 className="text-2xl font-semibold tracking-tight text-gray-900">รายชื่อนักเรียนในคลาส</h2>
+                  <div className="w-full md:w-64">
+                    <input 
+                      type="text"
+                      placeholder="ค้นหาชื่อหรือรหัสนักเรียน..."
+                      className="apple-input w-full"
+                      value={studentFilter}
+                      onChange={(e) => setStudentFilter(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-3xl border border-gray-100 bg-white/30">
+                  <table className="min-w-full divide-y divide-gray-100">
+                    <thead className="bg-gray-50/50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
+                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">เข้าเรียน</th>
+                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">อัตราการเข้าเรียน</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">สถานะล่าสุด</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {attendanceData.topStudents
+                        .filter(s => 
+                          s.name.toLowerCase().includes(studentFilter.toLowerCase()) || 
+                          s.student_id.toLowerCase().includes(studentFilter.toLowerCase())
+                        )
+                        .map((student, idx) => {
+                          const lastRecord = attendanceData.recentAttendance.find(r => r.student_id === student.student_id);
+                          return (
+                            <tr key={idx} className="hover:bg-white/50 transition-colors group">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center">
+                                  <div className="w-10 h-10 bg-[#0071e3]/10 rounded-xl flex items-center justify-center text-[#0071e3] font-bold mr-4">
+                                    {student.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                    <div className="font-semibold text-gray-900">{student.name}</div>
+                                    <div className="text-xs text-gray-400">{student.student_id}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-center">
+                                <span className="font-bold text-gray-900">{student.attendanceCount}</span>
+                                <span className="text-gray-400 text-xs ml-1">/ {attendanceData.totalSessions}</span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex flex-col items-center">
+                                  <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden mb-1">
+                                    <div 
+                                      className={`h-full rounded-full ${
+                                        student.attendanceRate >= 80 ? 'bg-green-500' : 
+                                        student.attendanceRate >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                                      }`}
+                                      style={{ width: `${student.attendanceRate}%` }}
+                                    ></div>
+                                  </div>
+                                  <span className="text-xs font-bold text-gray-600">{student.attendanceRate.toFixed(0)}%</span>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right">
+                                {lastRecord ? (
+                                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${
+                                    lastRecord.status === 'present' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
+                                  }`}>
+                                    {lastRecord.status === 'present' ? 'มาเรียน' : 'มาสาย'}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-gray-300 uppercase">ไม่มีข้อมูล</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
             
@@ -601,6 +737,108 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
                       </button>
                    </div>
                  )}
+              </div>
+            )}
+
+            {selectedTab === 'analytics' && (
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-semibold tracking-tight text-gray-900">วิเคราะห์ข้อมูลการเข้าเรียน</h2>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Attendance Trend */}
+                  <div className="lg:col-span-2 glass-morphism p-8">
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">แนวโน้มการเข้าเรียน (7 วันล่าสุด)</h3>
+                    <div className="h-64 flex items-end justify-between gap-2 px-4 pb-10">
+                      {getAttendanceTrend().map((day, idx) => (
+                        <div key={idx} className="flex-1 flex flex-col items-center group relative h-full">
+                          <div className="flex-1 w-full flex flex-col justify-end items-center">
+                            <div 
+                              className="w-full max-w-[40px] bg-[#0071e3] rounded-t-xl transition-all group-hover:bg-[#0071e3]/80 relative"
+                              style={{ height: `${(day.count / (attendanceData.totalStudents || 1)) * 100}%`, minHeight: '4px' }}
+                            >
+                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                {day.count} คน
+                              </div>
+                            </div>
+                          </div>
+                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2">
+                            <p className="text-[10px] font-bold text-gray-400 rotate-45 origin-left whitespace-nowrap">{day.date}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Distribution */}
+                  <div className="glass-morphism p-8">
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">สัดส่วนการมาเรียน</h3>
+                    <div className="space-y-6">
+                      {[
+                        { label: 'มาตรงเวลา', count: attendanceData.attendanceStats.present, color: 'bg-green-500', total: attendanceData.recentAttendance.length },
+                        { label: 'มาสาย', count: attendanceData.attendanceStats.late, color: 'bg-yellow-500', total: attendanceData.recentAttendance.length }
+                      ].map((item, idx) => (
+                        <div key={idx}>
+                          <div className="flex justify-between text-sm mb-2">
+                            <span className="font-medium text-gray-600">{item.label}</span>
+                            <span className="font-bold text-gray-900">{item.total > 0 ? ((item.count / item.total) * 100).toFixed(1) : 0}%</span>
+                          </div>
+                          <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full ${item.color}`} style={{ width: `${item.total > 0 ? (item.count / item.total) * 100 : 0}%` }}></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Top Students */}
+                  <div className="glass-morphism p-8">
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">นักเรียนที่เข้าเรียนสม่ำเสมอ</h3>
+                    <div className="space-y-4">
+                      {attendanceData.topStudents.slice(0, 5).map((student, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-100">
+                          <div className="flex items-center">
+                            <div className="w-8 h-8 bg-green-100 text-green-600 rounded-lg flex items-center justify-center font-bold mr-3 text-xs">
+                              {idx + 1}
+                            </div>
+                            <span className="font-semibold text-gray-900">{student.name}</span>
+                          </div>
+                          <span className="text-sm font-bold text-[#0071e3]">{student.attendanceRate.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                      {attendanceData.topStudents.length === 0 && (
+                        <p className="text-center py-10 text-gray-400 font-medium italic">ยังไม่มีข้อมูลนักเรียน</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Low Attendance Students */}
+                  <div className="glass-morphism p-8">
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">นักเรียนที่เสี่ยงต่อการขาดเรียน</h3>
+                    <div className="space-y-4">
+                      {attendanceData.topStudents
+                        .filter(s => s.attendanceRate < 50 && s.attendanceCount < attendanceData.totalSessions / 2)
+                        .slice(0, 5)
+                        .map((student, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-4 bg-red-50/30 rounded-2xl border border-red-100">
+                            <div className="flex items-center">
+                              <div className="w-8 h-8 bg-red-100 text-red-600 rounded-lg flex items-center justify-center font-bold mr-3 text-xs">
+                                !
+                              </div>
+                              <span className="font-semibold text-gray-900">{student.name}</span>
+                            </div>
+                            <span className="text-sm font-bold text-red-500">{student.attendanceRate.toFixed(0)}%</span>
+                          </div>
+                        ))}
+                      {attendanceData.topStudents.filter(s => s.attendanceRate < 50 && s.attendanceCount < attendanceData.totalSessions / 2).length === 0 && (
+                        <p className="text-center py-10 text-gray-400 font-medium italic">ไม่มีนักเรียนที่มีอัตราการเข้าเรียนต่ำกว่าเกณฑ์</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

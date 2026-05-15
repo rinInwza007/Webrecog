@@ -179,8 +179,9 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
       setSuccess('✅ ลงทะเบียนใบหน้าสำเร็จ! กำลังเข้าสู่ระบบ...')
       
       setTimeout(() => {
+        stopCamera()
         onComplete()
-      }, 2000)
+      }, 4000)
     } catch (err: any) {
       setError(err.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์')
     } finally {
@@ -190,6 +191,21 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
+      {success && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-white/30 backdrop-blur-md" />
+          <div className="relative w-[90vw] max-w-lg bg-white/60 backdrop-blur-xl border border-white/50 rounded-3xl shadow-2xl p-12 flex flex-col items-center gap-6">
+            <div className="w-24 h-24 rounded-full bg-green-100/80 flex items-center justify-center text-5xl shadow-inner">
+              ✅
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-semibold text-gray-900">ลงทะเบียนใบหน้าสำเร็จ!</h2>
+              <p className="text-gray-500 text-sm">กำลังกลับไปที่หน้าเข้าสู่ระบบ...</p>
+            </div>
+            <div className="animate-spin h-6 w-6 border-2 border-gray-200 border-t-green-500 rounded-full" />
+          </div>
+        </div>
+      )}
       <div className="max-w-4xl w-full glass-card overflow-hidden">
         <div className="md:flex">
           {/* Left Side: Camera & Capture */}
@@ -203,6 +219,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
                 className="w-full h-full object-cover"
                 style={{ transform: 'scaleX(-1)' }} // Mirror for user
               />
+              <canvas ref={canvasRef} className="hidden" />
               
               {/* Guide Overlay */}
               <div className="absolute inset-0 border-[20px] border-black/40 rounded-2xl pointer-events-none"></div>

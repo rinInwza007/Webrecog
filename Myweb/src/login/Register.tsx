@@ -2,8 +2,8 @@ import { useState, ChangeEvent, FormEvent, FC } from 'react'
 import { useAuth } from './AuthContext'
 import { supabase } from '../supabaseClient'
 import type { User as SupabaseUser, AuthError } from '@supabase/supabase-js'
-import type { User as AppUser } from '../../Types/user'
-import type { UserRole } from '../../Types/common'
+import type { User as AppUser } from '../types/user'
+import type { UserRole } from '../types/common'
 
 interface RegisterProps {
   onSwitchToLogin: () => void
