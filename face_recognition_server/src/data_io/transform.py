@@ -17,7 +17,7 @@ import numpy as np
 import numbers
 import types
 
-from live_ness.src.data_io import functional as F
+from src.data_io import functional as F
 
 __all__ = ["Compose", "ToTensor", "ToPILImage", "Normalize", "RandomHorizontalFlip",
            "Lambda", "RandomResizedCrop", "ColorJitter", "RandomRotation"]

@@ -176,7 +176,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
 
       const result = await response.json() as EnrollmentResult
       setUploadProgress(100)
-      setSuccess('✅ ลงทะเบียนใบหน้าสำเร็จ! กำลังเข้าสู่ระบบ...')
+      setSuccess('✅ ลงทะเบียนใบหน้าสำเร็จ! กำลังกลับไปที่หน้าเข้าสู่ระบบ...')
       
       setTimeout(() => {
         stopCamera()
@@ -300,7 +300,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
                 {uploading ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin h-5 w-5 border-2 border-white/30 border-t-white rounded-full mr-3"></div>
-                    กำลังบันทึกข้อมูล...
+                    กำลังบันทึกข้อมูล... ใช้เวลาประมาณ 3 นาที
                   </div>
                 ) : (
                   'บันทึกใบหน้าทั้งหมด'
