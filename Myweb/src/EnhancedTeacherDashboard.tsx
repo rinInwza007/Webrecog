@@ -28,6 +28,10 @@ const EnhancedTeacherDashboard: FC = () => {
   const [showClassCodeModal, setShowClassCodeModal] = useState<{code: string, name: string} | null>(null)
   const [showSessionDetailsModal, setShowSessionDetailsModal] = useState<any>(null)
   const [showManualCaptureModal, setShowManualCaptureModal] = useState(false)
+  const [showAttendanceLogModal, setShowAttendanceLogModal] = useState(false)
+  const [activeLogTab, setActiveLogTab] = useState<'logs' | 'attendance'>('logs')
+  const [sessionLogs, setSessionLogs] = useState<any[]>([])
+  const [logsLoading, setLogsLoading] = useState(false)
   
   // Form states
   const [newClass, setNewClass] = useState({
@@ -217,6 +221,40 @@ const EnhancedTeacherDashboard: FC = () => {
       setAttendanceRecords([])
     }
   }
+
+  const fetchSessionLogs = async (sessionId: string) => {
+    setLogsLoading(true)
+    try {
+      // Query activity logs from the database
+      const { data: logs, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      
+      setSessionLogs(logs || [])
+    } catch (error) {
+      console.error('❌ Error fetching session logs:', error)
+      // If activity_logs table doesn't exist, set empty logs
+      setSessionLogs([])
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  const openAttendanceLogModal = async (sessionId?: string) => {
+    setShowAttendanceLogModal(true)
+    setActiveLogTab('logs')
+    
+    if (sessionId) {
+      await fetchSessionLogs(sessionId)
+    } else if (currentSession) {
+      await fetchSessionLogs(currentSession.id)
+    }
+  }
+
 
   const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
     if (!currentSession) {
@@ -564,7 +602,7 @@ const EnhancedTeacherDashboard: FC = () => {
   return ( 
     <div className="min-h-screen">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm">
+      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm rounded-xl">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
@@ -614,6 +652,12 @@ const EnhancedTeacherDashboard: FC = () => {
                   className="apple-button-secondary bg-white py-2.5 text-sm disabled:opacity-50"
                 >
                   📸 Manual Capture
+                </button>
+                <button
+                  onClick={() => setShowAttendanceLogModal(true)}
+                  className="apple-button-secondary bg-white py-2.5 text-sm"
+                >
+                  📋 บันทึกการเช็คชื่อ
                 </button>
                 <button
                   onClick={() => setShowSessionDetailsModal(currentSession)}

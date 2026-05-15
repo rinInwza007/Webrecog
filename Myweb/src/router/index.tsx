@@ -72,7 +72,8 @@ const AuthFlow: FC = () => {
   const handleRegistrationSuccess = (user: any, role: UserRole): void => {
     if (role === 'teacher') {
       // Teachers don't need face registration, refresh to trigger AppRouter redirect
-      window.location.reload()
+      setState((prev) => ({ ...prev, mode: 'login' }))
+      //window.location.reload()
       return
     }
     
@@ -86,7 +87,8 @@ const AuthFlow: FC = () => {
 
   const handleFaceRegistrationComplete = (): void => {
     // Face registration complete, refresh to trigger AppRouter redirect
-    window.location.reload()
+    setState((prev) => ({ ...prev, mode: 'login' }))
+    //window.location.reload()
   }
 
   return (
