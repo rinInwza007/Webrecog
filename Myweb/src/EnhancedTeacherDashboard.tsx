@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, FC } from 'react'
+import Swal from 'sweetalert2'
 import { useAuth } from './login/AuthContext'
 import { supabase } from './supabaseClient'
 import ClassCodeDisplay from './ClassCodeDisplay'
@@ -32,6 +33,8 @@ const EnhancedTeacherDashboard: FC = () => {
   const [activeLogTab, setActiveLogTab] = useState<'logs' | 'attendance'>('logs')
   const [sessionLogs, setSessionLogs] = useState<any[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
+  const [selectedClassForSession, setSelectedClassForSession] = useState<Class | null>(null)
+  const [showSessionConfigModal, setShowSessionConfigModal] = useState(false)
   
   // Form states
   const [newClass, setNewClass] = useState({
@@ -258,7 +261,11 @@ const EnhancedTeacherDashboard: FC = () => {
 
   const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
     if (!currentSession) {
-      alert('ไม่พบเซสชันที่ใช้งานอยู่')
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่พบเซสชันที่ใช้งานอยู่'
+      })
       return
     }
 
@@ -281,7 +288,13 @@ const EnhancedTeacherDashboard: FC = () => {
       }
 
       const result = await response.json()
-      alert(`📸 Manual Capture สำเร็จ!\n\nพบใบหน้า: ${result.faces_detected} คน`)
+      Swal.fire({
+        icon: 'success',
+        title: 'Manual Capture สำเร็จ!',
+        text: `พบใบหน้า: ${result.faces_detected} คน`,
+        timer: 3000,
+        showConfirmButton: false
+      })
       
       // Refresh attendance records
       setTimeout(() => {
@@ -290,7 +303,11 @@ const EnhancedTeacherDashboard: FC = () => {
       
     } catch (error: any) {
       console.error('Error taking manual capture:', error)
-      alert('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message
+      })
     } finally {
       setActionLoading(false)
     }
@@ -333,7 +350,11 @@ const EnhancedTeacherDashboard: FC = () => {
 
   const createClass = async () => {
     if (!newClass.subject_name.trim()) {
-      alert('กรุณากรอกชื่อวิชา')
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'กรุณากรอกชื่อวิชา'
+      })
       return
     }
 
@@ -367,7 +388,11 @@ const EnhancedTeacherDashboard: FC = () => {
       fetchTeacherData()
     } catch (error: any) {
       console.error('Error creating class:', error)
-      alert('เกิดข้อผิดพลาดในการสร้างคลาสเรียน: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการสร้างคลาสเรียน: ' + error.message
+      })
     } finally {
       setActionLoading(false)
     }
@@ -416,50 +441,87 @@ const EnhancedTeacherDashboard: FC = () => {
         throw new Error(errorData.detail || 'Failed to start motion detection session')
       }
 
-      alert(`🎯 เริ่มเซสชัน Motion Detection สำเร็จ!`)
+      Swal.fire({
+        icon: 'success',
+        title: 'สำเร็จ',
+        text: 'เริ่มเซสชัน Motion Detection สำเร็จ!',
+        timer: 2000,
+        showConfirmButton: false
+      })
       
       setShowStartSessionModal(false)
       fetchTeacherData()
       
     } catch (error: any) {
       console.error('Error starting motion detection session:', error)
-      alert('เกิดข้อผิดพลาดในการเริ่มเซสชัน: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการเริ่มเซสชัน: ' + error.message
+      })
     } finally {
       setActionLoading(false)
     }
   }
+  const handleClassSelected = (cls: Class) => {
+  setSelectedClassForSession(cls)
+  setShowStartSessionModal(false)
+  setShowSessionConfigModal(true)
+}
+
+// 3. In your startMotionDetectionSession, change the signature to accept
+//    classId from selectedClassForSession instead of the modal state:
+const handleConfirmStartSession = async () => {
+  if (!selectedClassForSession) return
+  await startMotionDetectionSession(selectedClassForSession.class_id)
+  setShowSessionConfigModal(false)
+  setSelectedClassForSession(null)
+}
 
   const endSession = async (sessionId: string) => {
-    if (!confirm('คุณต้องการจบเซสชันนี้หรือไม่?')) return
-
-    setActionLoading(true)
-
-    try {
-      let endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end`
-      
-      if (currentSession?.session_type === 'motion_detection') {
-        endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end-motion`
+    Swal.fire({
+      title: 'คุณต้องการจบเซสชันนี้หรือไม่?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'ใช่, จบเซสชัน!',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        setActionLoading(true)
+        try {
+          let endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end`
+          if (currentSession?.session_type === 'motion_detection') {
+            endpoint = `${FASTAPI_URL}/api/session/${sessionId}/end-motion`
+          }
+          const response = await fetch(endpoint, { method: 'PUT' })
+          if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.detail || `Failed to end session (${response.status})`)
+          }
+          setCurrentSession(null)      
+          setAttendanceRecords([])    
+          Swal.fire({
+            icon: 'success',
+            title: 'สำเร็จ',
+            text: 'จบเซสชันสำเร็จ!',
+            timer: 2000,
+            showConfirmButton: false
+          })
+          fetchTeacherData()
+        } catch (error: any) {
+          console.error('❌ Error ending session:', error)
+          Swal.fire({
+            icon: 'error',
+            title: 'เกิดข้อผิดพลาด',
+            text: `เกิดข้อผิดพลาดในการจบเซสชัน: ${error.message}`
+          })
+        } finally {
+          setActionLoading(false)
+        }
       }
-      
-      const response = await fetch(endpoint, {
-        method: 'PUT'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `Failed to end session (${response.status})`)
-      }
-      setCurrentSession(null)      
-      setAttendanceRecords([])    
-      alert(`✅ จบเซสชันสำเร็จ!`)
-      fetchTeacherData()
-      
-    } catch (error: any) {
-      console.error('❌ Error ending session:', error)
-      alert(`❌ เกิดข้อผิดพลาดในการจบเซสชัน: ${error.message}`)
-    } finally {
-      setActionLoading(false)
-    }
+    })
   }
 
   const startCamera = async () => {
@@ -495,12 +557,20 @@ const EnhancedTeacherDashboard: FC = () => {
 
   const takeManualCapture = async () => {
     if (!currentSession) {
-      alert('ไม่พบเซสชันที่ใช้งานอยู่')
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่พบเซสชันที่ใช้งานอยู่'
+      })
       return
     }
 
     if (!videoRef.current || !isCapturing) {
-      alert('กรุณาเปิดกล้องก่อน')
+      Swal.fire({
+        icon: 'warning',
+        title: 'คำแนะนำ',
+        text: 'กรุณาเปิดกล้องก่อน'
+      })
       return
     }
 
@@ -535,7 +605,13 @@ const EnhancedTeacherDashboard: FC = () => {
         throw new Error(errorData.detail || 'Failed to take manual capture')
       }
 
-      alert(`📸 Manual Capture สำเร็จ!`)
+      Swal.fire({
+        icon: 'success',
+        title: 'สำเร็จ',
+        text: 'Manual Capture สำเร็จ!',
+        timer: 2000,
+        showConfirmButton: false
+      })
       
       setTimeout(() => {
         fetchAttendanceRecords(currentSession.id)
@@ -543,40 +619,81 @@ const EnhancedTeacherDashboard: FC = () => {
       
     } catch (error: any) {
       console.error('Error taking manual capture:', error)
-      alert('เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message
+      })
     } finally {
       setActionLoading(false)
     }
   }
 
   const deleteClass = async (classId: string, className: string) => {
-    if (!confirm(`คุณต้องการลบคลาส "${className}" ใช่หรือไม่?`)) return
+    Swal.fire({
+      title: `คุณต้องการลบคลาส "${className}" ใช่หรือไม่?`,
+      text: "การดำเนินการนี้ไม่สามารถย้อนกลับได้!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'ใช่, ลบเลย!',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        setActionLoading(true)
+        try {
+          const { error } = await supabase
+            .from('classes')
+            .delete()
+            .eq('class_id', classId)
 
-    setActionLoading(true)
+          if (error) throw error
 
-    try {
-      const { error } = await supabase
-        .from('classes')
-        .delete()
-        .eq('class_id', classId)
-
-      if (error) throw error
-
-      alert('ลบคลาสเรียนสำเร็จ')
-      fetchTeacherData()
-    } catch (error: any) {
-      console.error('Error deleting class:', error)
-      alert('เกิดข้อผิดพลาดในการลบคลาสเรียน: ' + error.message)
-    } finally {
-      setActionLoading(false)
-    }
+          Swal.fire({
+            icon: 'success',
+            title: 'สำเร็จ',
+            text: 'ลบคลาสเรียนสำเร็จ',
+            timer: 2000,
+            showConfirmButton: false
+          })
+          fetchTeacherData()
+        } catch (error: any) {
+          console.error('Error deleting class:', error)
+          Swal.fire({
+            icon: 'error',
+            title: 'เกิดข้อผิดพลาด',
+            text: 'เกิดข้อผิดพลาดในการลบคลาสเรียน: ' + error.message
+          })
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
   }
 
   const handleSignOut = async () => {
-    if (confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
-      stopCamera()
-      await signOut()
-    }
+    Swal.fire({
+      title: 'คุณต้องการออกจากระบบใช่หรือไม่?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'ใช่, ออกจากระบบ',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        stopCamera()
+        await Swal.fire({
+          icon: 'success',
+          title: 'ออกจากระบบสำเร็จ',
+          text: 'หวังว่าจะได้พบกันใหม่นะ!',
+          timer: 1500,
+          showConfirmButton: false
+        })
+        await signOut()
+      }
+    })
   }
 
   // ถ้ากำลังแสดง Class Detail View ให้แสดง component นั้น
@@ -973,7 +1090,7 @@ const EnhancedTeacherDashboard: FC = () => {
                   classes.map((cls) => (
                     <button
                       key={cls.class_id}
-                      onClick={() => startMotionDetectionSession(cls.class_id)}
+                      onClick={() => handleClassSelected(cls)}
                       disabled={actionLoading}
                       className="w-full text-left p-5 rounded-2xl border border-gray-100 hover:border-[#0071e3]/30 hover:bg-[#0071e3]/5 transition-all group flex justify-between items-center"
                     >
@@ -1001,6 +1118,124 @@ const EnhancedTeacherDashboard: FC = () => {
           </div>
         </div>
       )}
+      {showSessionConfigModal && selectedClassForSession && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div
+      className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+      onClick={() => {
+        setShowSessionConfigModal(false)
+        setShowStartSessionModal(true)
+      }}
+    />
+    <div className="max-w-md w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
+      
+      {/* Header */}
+      <div className="bg-[#0071e3] p-8 text-white text-center">
+        <div className="text-3xl mb-2">⚙️</div>
+        <h3 className="text-2xl font-semibold tracking-tight">ตั้งค่าเซสชัน</h3>
+        <p className="text-white/70 text-sm mt-1">{selectedClassForSession.subject_name}</p>
+      </div>
+
+      <div className="p-8 space-y-6">
+
+        {/* Duration */}
+        <div className="bg-gray-50/80 rounded-2xl p-5">
+          <label className="block text-sm font-semibold text-gray-700 mb-3">
+            🕐 ระยะเวลาของคลาส
+          </label>
+          <div className="flex items-center space-x-4">
+            <input
+              type="range"
+              min={0.5}
+              max={6}
+              step={0.5}
+              value={sessionConfig.duration_hours}
+              onChange={(e) =>
+                setSessionConfig({ ...sessionConfig, duration_hours: parseFloat(e.target.value) })
+              }
+              className="flex-1 accent-[#0071e3]"
+            />
+            <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
+              {sessionConfig.duration_hours.toFixed(1)} ชม.
+            </span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
+            <span>0.5 ชม.</span><span>6 ชม.</span>
+          </div>
+        </div>
+
+        {/* On-time limit */}
+        <div className="bg-gray-50/80 rounded-2xl p-5">
+          <label className="block text-sm font-semibold text-gray-700 mb-1">
+            ⏰ เวลามาทัน (นาทีหลังเริ่มเซสชัน)
+          </label>
+          <p className="text-xs text-gray-400 mb-3">
+            นักเรียนที่เช็คชื่อหลังจากนี้จะถูกบันทึกว่า "สาย"
+          </p>
+          <div className="flex items-center space-x-4">
+            <input
+              type="range"
+              min={5}
+              max={60}
+              step={5}
+              value={sessionConfig.on_time_limit_minutes}
+              onChange={(e) =>
+                setSessionConfig({
+                  ...sessionConfig,
+                  on_time_limit_minutes: parseInt(e.target.value),
+                })
+              }
+              className="flex-1 accent-[#0071e3]"
+            />
+            <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
+              {sessionConfig.on_time_limit_minutes} นาที
+            </span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
+            <span>5 นาที</span><span>60 นาที</span>
+          </div>
+
+          {/* Visual timeline hint */}
+          <div className="mt-4 flex items-center space-x-2 text-xs">
+            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">มาทัน</span>
+            <div className="flex-1 h-1 bg-gradient-to-r from-green-400 to-yellow-400 rounded-full" />
+            <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-semibold">สาย</span>
+            <div className="flex-1 h-1 bg-yellow-300 rounded-full" />
+            <span className="text-gray-400">{sessionConfig.duration_hours * 60} นาที</span>
+          </div>
+        </div>
+
+        {/* Summary */}
+        <div className="border border-[#0071e3]/20 bg-[#0071e3]/5 rounded-2xl p-4 text-sm text-gray-600 space-y-1">
+          <p>📚 คลาส: <span className="font-semibold text-gray-900">{selectedClassForSession.subject_name}</span></p>
+          <p>⏱ ระยะเวลา: <span className="font-semibold text-gray-900">{sessionConfig.duration_hours} ชั่วโมง</span></p>
+          <p>✅ มาทันภายใน: <span className="font-semibold text-gray-900">{sessionConfig.on_time_limit_minutes} นาที</span></p>
+          <p>⚠️ หลัง {sessionConfig.on_time_limit_minutes} นาที: <span className="font-semibold text-yellow-600">บันทึกว่าสาย</span></p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex space-x-3 pt-2">
+          <button
+            onClick={() => {
+              setShowSessionConfigModal(false)
+              setShowStartSessionModal(true)
+            }}
+            className="flex-1 apple-button-secondary py-3 text-sm"
+          >
+            ย้อนกลับ
+          </button>
+          <button
+            onClick={handleConfirmStartSession}
+            disabled={actionLoading}
+            className="flex-1 apple-button-primary py-3 text-sm bg-[#0071e3] hover:bg-[#0077ed]"
+          >
+            {actionLoading ? 'กำลังเริ่ม...' : '🚀 เริ่มเช็คชื่อ'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
       {showClassCodeModal && (
         <ClassCodeDisplay

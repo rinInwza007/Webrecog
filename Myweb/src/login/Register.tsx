@@ -1,4 +1,5 @@
 import { useState, ChangeEvent, FormEvent, FC } from 'react'
+import Swal from 'sweetalert2'
 import { useAuth } from './AuthContext'
 import { supabase } from '../supabaseClient'
 import type { User as SupabaseUser, AuthError } from '@supabase/supabase-js'
@@ -141,16 +142,18 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
 
         console.log('User registered successfully:', appUserData)
 
-        // Success - call the callback to proceed to next step
-        //onRegistrationSuccess(authUser, formData.role)
-        if (formData.role === 'teacher') {
-          setSuccess('สมัครสมาชิกสำเร็จ!')
-          setTimeout(() => {
-            onRegistrationSuccess(authUser, formData.role)
-          }, 3000)
-        } else {
+        Swal.fire({
+          icon: 'success',
+          title: 'สมัครสมาชิกสำเร็จ!',
+          text: formData.role === 'teacher' 
+            ? 'กำลังกลับไปที่หน้าเข้าสู่ระบบ...' 
+            : 'กำลังไปยังขั้นตอนลงทะเบียนใบหน้า...',
+          timer: 3000,
+          showConfirmButton: false,
+          allowOutsideClick: false
+        }).then(() => {
           onRegistrationSuccess(authUser, formData.role)
-        }
+        })
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -163,27 +166,6 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
-      {success && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-white/30 backdrop-blur-md" />
-        <div className="relative w-[90vw] max-w-lg bg-white/60 backdrop-blur-xl border border-white/50 rounded-3xl shadow-2xl p-12 flex flex-col items-center gap-6">
-          <div className="w-24 h-24 rounded-full bg-green-100/80 flex items-center justify-center text-5xl shadow-inner">
-            ✅
-          </div>
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-semibold text-gray-900">
-              {formData.role === 'teacher' ? 'สมัครสมาชิกสำเร็จ!' : 'สมัครสมาชิกสำเร็จ!'}
-            </h2>
-            <p className="text-gray-500 text-sm">
-              {formData.role === 'teacher' 
-                ? 'กำลังกลับไปที่หน้าเข้าสู่ระบบ...' 
-                : 'กำลังไปยังขั้นตอนลงทะเบียนใบหน้า...'}
-            </p>
-          </div>
-          <div className="animate-spin h-6 w-6 border-2 border-gray-200 border-t-green-500 rounded-full" />
-        </div>
-      </div>
-    )}
       <div className="max-w-md w-full space-y-8 p-10 glass-card">
         <div className="text-center">
           <h2 className="text-3xl font-semibold tracking-tight text-gray-900 mb-2">

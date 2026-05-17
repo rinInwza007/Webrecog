@@ -1,4 +1,5 @@
 import { useState, useEffect, FC } from 'react'
+import Swal from 'sweetalert2'
 import { useAuth } from './login/AuthContext'
 import { supabase } from './supabaseClient'
 import image from './utils/logo/image.png'
@@ -85,7 +86,11 @@ const StudentDashboard: FC = () => {
 
     } catch (error: any) {
       console.error('Error fetching student data:', error)
-      alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + error.message
+      })
     } finally {
       setLoading(false)
     }
@@ -93,7 +98,11 @@ const StudentDashboard: FC = () => {
 
   const joinClass = async () => {
     if (!classCode.trim()) {
-      alert('กรุณากรอกรหัสวิชา')
+      Swal.fire({
+        icon: 'warning',
+        title: 'คำแนะนำ',
+        text: 'กรุณากรอกรหัสวิชา'
+      })
       return
     }
 
@@ -107,7 +116,11 @@ const StudentDashboard: FC = () => {
         .single()
 
       if (classError || !classData) {
-        alert('ไม่พบรหัสวิชาที่ระบุ กรุณาตรวจสอบรหัสให้ถูกต้อง')
+        Swal.fire({
+          icon: 'error',
+          title: 'ไม่พบข้อมูล',
+          text: 'ไม่พบรหัสวิชาที่ระบุ กรุณาตรวจสอบรหัสให้ถูกต้อง'
+        })
         return
       }
 
@@ -119,7 +132,11 @@ const StudentDashboard: FC = () => {
         .single()
 
       if (existingEnrollment) {
-        alert('คุณได้ลงทะเบียนวิชานี้แล้ว')
+        Swal.fire({
+          icon: 'info',
+          title: 'ข้อมูลซ้ำ',
+          text: 'คุณได้ลงทะเบียนวิชานี้แล้ว'
+        })
         return
       }
 
@@ -134,48 +151,92 @@ const StudentDashboard: FC = () => {
 
       if (enrollError) throw enrollError
 
-      alert(`เข้าร่วมวิชา "${classData.subject_name}" สำเร็จ!`)
+      Swal.fire({
+        icon: 'success',
+        title: 'สำเร็จ',
+        text: `เข้าร่วมวิชา "${classData.subject_name}" สำเร็จ!`,
+        timer: 2000,
+        showConfirmButton: false
+      })
       setShowJoinModal(false)
       setClassCode('')
       
       fetchStudentData()
     } catch (error: any) {
       console.error('Error joining class:', error)
-      alert('เกิดข้อผิดพลาดในการลงทะเบียนวิชา: ' + error.message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการลงทะเบียนวิชา: ' + error.message
+      })
     } finally {
       setActionLoading(false)
     }
   }
 
   const leaveClass = async (enrollmentId: string, className?: string) => {
-    if (!confirm(`คุณต้องการออกจากวิชา "${className || 'นี้'}" ใช่หรือไม่?`)) {
-      return
-    }
+    Swal.fire({
+      title: `คุณต้องการออกจากวิชา "${className || 'นี้'}" ใช่หรือไม่?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'ใช่, ออกจากวิชา',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        setActionLoading(true)
+        try {
+          const { error } = await supabase
+            .from('student_enrollments')
+            .delete()
+            .eq('enrollment_id', enrollmentId)
 
-    setActionLoading(true)
+          if (error) throw error
 
-    try {
-      const { error } = await supabase
-        .from('student_enrollments')
-        .delete()
-        .eq('enrollment_id', enrollmentId)
-
-      if (error) throw error
-
-      alert('ออกจากวิชาเรียนสำเร็จ')
-      fetchStudentData()
-    } catch (error) {
-      console.error('Error leaving class:', error)
-      alert('เกิดข้อผิดพลาดในการออกจากวิชาเรียน')
-    } finally {
-      setActionLoading(false)
-    }
+          Swal.fire({
+            icon: 'success',
+            title: 'สำเร็จ',
+            text: 'ออกจากวิชาเรียนสำเร็จ',
+            timer: 2000,
+            showConfirmButton: false
+          })
+          fetchStudentData()
+        } catch (error) {
+          console.error('Error leaving class:', error)
+          Swal.fire({
+            icon: 'error',
+            title: 'เกิดข้อผิดพลาด',
+            text: 'เกิดข้อผิดพลาดในการออกจากวิชาเรียน'
+          })
+        } finally {
+          setActionLoading(false)
+        }
+      }
+    })
   }
 
   const handleSignOut = async () => {
-    if (confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
-      await signOut()
-    }
+    Swal.fire({
+      title: 'คุณต้องการออกจากระบบใช่หรือไม่?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'ใช่, ออกจากระบบ',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        await Swal.fire({
+          icon: 'success',
+          title: 'ออกจากระบบสำเร็จ',
+          text: 'หวังว่าจะได้พบกันใหม่นะ!',
+          timer: 1500,
+          showConfirmButton: false
+        })
+        await signOut()
+      }
+    })
   }
 
   if (loading) {

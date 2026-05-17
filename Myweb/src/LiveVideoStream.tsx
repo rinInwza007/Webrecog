@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, FC } from 'react'
+import Swal from 'sweetalert2'
 import config from './config'
 import type { AttendanceSession } from '@/types'
 
@@ -321,7 +322,11 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
 
   const takeManualCapture = async () => {
     if (!videoRef.current || !canvasRef.current || !currentSession) {
-      alert('กรุณาตรวจสอบกล้องและเซสชัน')
+      Swal.fire({
+        icon: 'warning',
+        title: 'ไม่สามารถถ่ายภาพได้',
+        text: 'กรุณาตรวจสอบกล้องและเซสชัน'
+      })
       return
     }
 
@@ -346,7 +351,11 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
 
     } catch (error) {
       console.error('❌ Error taking manual capture:', error)
-      alert('เกิดข้อผิดพลาดในการถ่ายภาพ')
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'เกิดข้อผิดพลาดในการถ่ายภาพ'
+      })
     } finally {
       setIsCapturing(false)
     }
