@@ -21,7 +21,8 @@ from src.anti_spoof_predict import AntiSpoofPredict
 from src.generate_patches import CropImage
 from src.utility import parse_model_name
 from state_module import supabase_manager
-
+from datetime import datetime
+import base64
 logger = logging.getLogger(__name__)
 
 MODEL = "./resources/anti_spoof_models"
@@ -30,20 +31,23 @@ image_cropper = CropImage() # ขยายขนาดพื้นที่ร�
 
 
 def check_liveness(image_array):
-    face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
+    face_locations, image_array_redimension = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
     print("(top, right, bottom, left)")
     print("face_locations: ", face_locations)
     print("(หน้าที่ตรวจพบ):", len(face_locations))
 
-    height, width = image_array.shape[:2] #
+    print("ขนาดภาพต้นฉบับ : ", image_array.shape)
+    print("ขนาดภาพหลังออกฟังก์ชัน ค้นหาใบหน้า detect_faces_in_image : ", image_array_redimension.shape)
+
+    height, width = image_array.shape[:2] # ดึงขนาดของภาพ (สูง, กว้าง)
     max_dimension = 1024
     scale_factor = 1.0
-    if max(height, width) > max_dimension:
+    if max(height, width) > max_dimension: #ถ้าเกิน 1024 พิกเซล ให้ปรับขนาดภาพลงเพื่อให้ประมวลผลได้เร็วขึ้น
         scale_factor = max(height, width) / max_dimension
 
     if not face_locations:
         print("ไม่พบใบหน้าในภาพ")
-        return [], [], []
+        return [], [], [] , image_array_redimension
     
     real_faces = [] 
     spoof_faces = []
@@ -93,7 +97,7 @@ def check_liveness(image_array):
             spoof_score_faces.append(round(score, 4))
             #spoof_faces.append({"score": round(score, 2)})
 
-    return real_faces, spoof_faces, spoof_score_faces
+    return real_faces, spoof_faces, spoof_score_faces , image_array_redimension
 
 class FaceTracker:
     """Track faces across frames using centroid tracking"""
@@ -262,14 +266,14 @@ class FaceEmbeddingProcessor:
         """
         try:
             if image_array is None or image_array.size == 0:
-                return []
+                return [] ,image_array
             
             # Dynamic model selection
             if model == "auto":
                 # High motion -> use fast HOG; Low motion -> use accurate CNN
                 model = "cnn" if motion_strength < 0.6 else "hog"
                 logger.debug(f"🔄 Dynamic model switch: motion={motion_strength:.2f} → {model}")
-            
+            print(f"ขนาดภาพต้นฉบับกำลังเข้าฟังชัน detect_faces_in_image : {image_array.shape}")
             # Optimize image if too large
             height, width = image_array.shape[:2]
             max_dimension = 1024
@@ -279,15 +283,16 @@ class FaceEmbeddingProcessor:
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 image_array = cv2.resize(image_array, (new_width, new_height))
+                print(f"ขนาดภาพหลังปรับ: {image_array.shape}")
                 logger.debug(f"🔧 Resized image: {width}x{height} → {new_width}x{new_height}")
             
             face_locations = face_recognition.face_locations(image_array, model=model)
             logger.info(f"👥 Detected {len(face_locations)} faces using {model} model")
-            return face_locations
+            return face_locations , image_array
             
         except Exception as e:
             logger.error(f"Error detecting faces: {e}")
-            return []
+            return [] , image_array
     
     @staticmethod
     def extract_face_encodings(image_array: np.ndarray, face_locations: List[Tuple],
@@ -808,127 +813,159 @@ def process_faces_with_advanced_matching(session_id: str, image_array: np.ndarra
         
         if image_array is None or image_array.size == 0:
             logger.warning("Empty image array")
-            return []
+            return {
+            'detected_faces': [],
+            'spoof_detected': False,
+            'spoof_count': 0,
+            'spoof_timestamp': None,
+            'spoof_image_b64': None
+            }
         
         if not enrolled_students:
             logger.warning("⚠️ No students → running detection-only mode")
             
-            
+        face_locations_real = []
+
         logger.info(f"🔍 Advanced processing with {len(enrolled_students)} enrolled students")
         
         # Detect faces แคปชันการตรวจจับใบหน้าพร้อมการเลือกโมเดลแบบไดนามิก
         #face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog") #ใช้ฟังชัน detect_faces_in_image จากไฟล์ ai_module.py ในการตรวจจับใบหน้า โดยใช้โมเดล HOG
-        face_locations_real, face_locations_spoof ,spoof_scores= check_liveness(image_array) #ค้นหาใบหน้าที่ตรวจจับได้และแยกแยะระหว่างใบหน้าจริงและใบหน้าปลอม (spoof) โดยใช้ฟังก์ชัน check_liveness ซึ่งจะคืนค่าเป็นสองรายการ: face_locations_real สำหรับใบหน้าจริง และ face_locations_spoof สำหรับใบหน้าปลอม
+        face_locations_real, face_locations_spoof ,spoof_scores ,image_array_redimension = check_liveness(image_array) #ค้นหาใบหน้าที่ตรวจจับได้และแยกแยะระหว่างใบหน้าจริงและใบหน้าปลอม (spoof) โดยใช้ฟังก์ชัน check_liveness ซึ่งจะคืนค่าเป็นสองรายการ: face_locations_real สำหรับใบหน้าจริง และ face_locations_spoof สำหรับใบหน้าปลอม
         # ได้ลิส โลเคชันใบหน้าออกมา
         print("result_real:", face_locations_real)
         print("result_spoof:", face_locations_spoof)
         print("spoof_scores:", spoof_scores)
         len_spoof = len(face_locations_spoof)
         print("จำนวนหน้าปลอม:", len_spoof)
-
+        spoof_image_b64 = None
+        spoof_timestamp = None
         
         if len_spoof > 0:
             print("พบใบหน้าปลอมจำนวน:", len_spoof)
             print("session_id:", session_id)
             supabase_manager.liveness_log(len_spoof, session_id)
 
+            image_draw = image_array_redimension.copy()
+            #mage_draw = cv2.cvtColor(image_draw, cv2.COLOR_RGB2BGR)
+            for (top, right, bottom, left) in face_locations_spoof:
+                cv2.rectangle(image_draw, (left, top), (right, bottom), (255, 0, 0), 3)
+                cv2.putText(image_draw, "SPOOF", (left, top - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
+            #filename = f"spoof_{session_id}.jpg"
+            #cv2.imwrite(filename, image_draw)
+
+            img_bgr = cv2.cvtColor(image_draw, cv2.COLOR_RGB2BGR) # แปลงภาพจาก RGB เป็น BGR เพื่อให้ OpenCV สามารถบันทึกได้ถูกต้อง
+            _, buffer = cv2.imencode('.jpg', img_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85]) # บีบอัดภาพเป็น JPEG และเก็บไว้ใน buffer
+            spoof_image_b64 = base64.b64encode(buffer).decode('utf-8') # แปลง buffer เป็น Base64 string
+            spoof_timestamp = datetime.now().isoformat()
+            print("สร้าง spoof image แล้ว:")
 
         if not face_locations_real:
-            logger.info("❌ No faces detected")
-            return []
-        
-        # Extract encodings # สร้าง embedding
-        face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations_real, num_jitters=2) #ใช้ฟังชัน extract_face_encodings จากไฟล์ ai_module.py ในการแปลงใบหน้าที่ตรวจจับได้เป็นเวกเตอร์ตัวเลขที่เรียกว่า "face encoding" ซึ่งจะใช้ในการเปรียบเทียบกับข้อมูลใบหน้าที่ลงทะเบียนไว้ในระบบ
-        
-        if not face_encodings:
-            logger.warning("❌ No face encodings generated")
-            return []
-        
+            logger.info("❌ No face_locations_real detected")
+
+        face_encodings = []
         detected_faces = []
-        base_threshold = config.get('face_threshold', 0.6)
-        
-        for i, (encoding, location) in enumerate(zip(face_encodings, face_locations_real)): #วนลูปผ่านใบหน้าที่ตรวจจับได้และการเข้ารหัสที่สอดคล้องกัน
-            logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
+        if len(face_locations_real) > 0:
+            # Extract encodings # สร้าง embedding
+            face_encodings = FaceEmbeddingProcessor.extract_face_encodings(image_array, face_locations_real, num_jitters=2) #ใช้ฟังชัน extract_face_encodings จากไฟล์ ai_module.py ในการแปลงใบหน้าที่ตรวจจับได้เป็นเวกเตอร์ตัวเลขที่เรียกว่า "face encoding" ซึ่งจะใช้ในการเปรียบเทียบกับข้อมูลใบหน้าที่ลงทะเบียนไว้ในระบบ
+
+            if len(face_encodings) > 0:
+                logger.warning(" ✅have face encodings generated")
+            else:
+                logger.warning(" ❌ No face encodings generated")
             
-            norm_encoding = FaceEmbeddingProcessor.normalize_embedding(encoding)
-            if norm_encoding is None:
-                continue
+            detected_faces = []
+            base_threshold = config.get('face_threshold', 0.6)
             
-            # Advanced similarity analysis
-            similarity_results = []
-            
-            for student_id in enrolled_students:
-                if not embedding_manager:
+            for i, (encoding, location) in enumerate(zip(face_encodings, face_locations_real)): #วนลูปผ่านใบหน้าที่ตรวจจับได้และการเข้ารหัสที่สอดคล้องกัน
+                logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
+                
+                norm_encoding = FaceEmbeddingProcessor.normalize_embedding(encoding)
+                if norm_encoding is None:
                     continue
                 
-                stored_embedding = embedding_manager.get_embedding_advanced(student_id)
-                if stored_embedding is None:
-                    continue
+                # Advanced similarity analysis
+                similarity_results = []
                 
-                if use_advanced_similarity:
-                    similarity_metrics = SimilarityCalculator.calculate_advanced_similarity(norm_encoding, stored_embedding)
-                else:
-                    simple_score = SimilarityCalculator.calculate_simple_similarity(norm_encoding, stored_embedding)
-                    similarity_metrics = {'combined_score': simple_score, 'confidence_level': 'medium'}
+                for student_id in enrolled_students:
+                    if not embedding_manager:
+                        continue
+                    
+                    stored_embedding = embedding_manager.get_embedding_advanced(student_id)
+                    if stored_embedding is None:
+                        continue
+                    
+                    if use_advanced_similarity:
+                        similarity_metrics = SimilarityCalculator.calculate_advanced_similarity(norm_encoding, stored_embedding)
+                    else:
+                        simple_score = SimilarityCalculator.calculate_simple_similarity(norm_encoding, stored_embedding)
+                        similarity_metrics = {'combined_score': simple_score, 'confidence_level': 'medium'}
+                    
+                    similarity_results.append({
+                        'student_id': student_id,
+                        'similarity_score': similarity_metrics['combined_score'],
+                        'confidence_level': similarity_metrics.get('confidence_level', 'medium'),
+                        'detailed_metrics': similarity_metrics
+                    })
                 
-                similarity_results.append({
-                    'student_id': student_id,
-                    'similarity_score': similarity_metrics['combined_score'],
-                    'confidence_level': similarity_metrics.get('confidence_level', 'medium'),
-                    'detailed_metrics': similarity_metrics
-                })
-            
-            # Sort by similarity
-            similarity_results.sort(key=lambda x: x['similarity_score'], reverse=True)
-            
-            # Determine best match
-            best_match = None
-            best_score = 0.0
-            confidence_level = 'very_low'
-            threshold = base_threshold
-            
-            if similarity_results:
-                top_result = similarity_results[0]
+                # Sort by similarity
+                similarity_results.sort(key=lambda x: x['similarity_score'], reverse=True)
                 
-                # Adaptive threshold
-                if top_result['confidence_level'] == 'very_high':
-                    threshold = base_threshold * 0.7
-                elif top_result['confidence_level'] == 'high':
-                    threshold = base_threshold * 0.8
+                # Determine best match
+                best_match = None
+                best_score = 0.0
+                confidence_level = 'very_low'
+                threshold = base_threshold
                 
-                if top_result['similarity_score'] > threshold:
-                    best_match = top_result['student_id']
-                    best_score = top_result['similarity_score']
-                    confidence_level = top_result['confidence_level']
-                    logger.info(f"✅ Face {i+1} recognized as {best_match}")
-            
-            face_info = {
-                'face_index': i,
-                'student_id': best_match,
-                'confidence': float(best_score),
-                'verified': best_match is not None,
-                'confidence_level': confidence_level,
-                'threshold_used': threshold,
-                'advanced_analysis': similarity_results[:5],
-                'bounding_box': {
-                    'top': int(location[0]),
-                    'right': int(location[1]),
-                    'bottom': int(location[2]),
-                    'left': int(location[3])
-                },
-                'processing_method': 'advanced_similarity',
-                'motion_strength': motion_strength,
-                'processing_time': time.time() - start_time
-            }
-            
-            detected_faces.append(face_info)
+                if similarity_results:
+                    top_result = similarity_results[0]
+                    
+                    # Adaptive threshold
+                    if top_result['confidence_level'] == 'very_high':
+                        threshold = base_threshold * 0.7
+                    elif top_result['confidence_level'] == 'high':
+                        threshold = base_threshold * 0.8
+                    
+                    if top_result['similarity_score'] > threshold:
+                        best_match = top_result['student_id']
+                        best_score = top_result['similarity_score']
+                        confidence_level = top_result['confidence_level']
+                        logger.info(f"✅ Face {i+1} recognized as {best_match}")
+                
+                face_info = {
+                    'face_index': i,
+                    'student_id': best_match,
+                    'confidence': float(best_score),
+                    'verified': best_match is not None,
+                    'confidence_level': confidence_level,
+                    'threshold_used': threshold,
+                    'advanced_analysis': similarity_results[:5],
+                    'bounding_box': {
+                        'top': int(location[0]),
+                        'right': int(location[1]),
+                        'bottom': int(location[2]),
+                        'left': int(location[3])
+                    },
+                    'processing_method': 'advanced_similarity',
+                    'motion_strength': motion_strength,
+                    'processing_time': time.time() - start_time
+                }
+                
+                detected_faces.append(face_info)
         
         processing_time = time.time() - start_time
         verified_count = len([f for f in detected_faces if f['verified']])
         
         logger.info(f"📋 Advanced processing complete: {verified_count} recognized in {processing_time:.2f}s")
         
-        return detected_faces
+        return {
+            'detected_faces': detected_faces,
+            'spoof_detected': len_spoof > 0,
+            'spoof_count': len_spoof,
+            'spoof_timestamp': spoof_timestamp,
+            'spoof_image_b64': spoof_image_b64
+        }
+    
         
     except Exception as e:
         logger.error(f"Error in advanced face processing: {e}")
