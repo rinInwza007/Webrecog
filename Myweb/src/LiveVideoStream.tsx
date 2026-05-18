@@ -3,6 +3,12 @@ import Swal from 'sweetalert2'
 import config from './config'
 import type { AttendanceSession } from '@/types'
 
+interface SpoofEvent {
+  image_b64: string
+  timestamp: string
+  spoof_count: number
+}
+
 interface LiveVideoStreamProps {
   currentSession: (AttendanceSession & { classes?: any }) | null
   isSessionActive: boolean
@@ -13,6 +19,7 @@ interface LiveVideoStreamProps {
       [key: string]: any
     }
   }
+  onSpoofDetected?: (event: SpoofEvent) => void
 }
 
 interface VideoStats {
@@ -26,7 +33,9 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
   currentSession, 
   isSessionActive, 
   onManualCapture, 
-  motionStats 
+  motionStats,
+  onSpoofDetected
+  
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -301,8 +310,20 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
               setVideoStats(prev => ({
                 ...prev,
                 framesSent: prev.framesSent + 1,
-                lastFrameTime: new Date().toLocaleTimeString()
+                lastFrameTime: new Date().toLocaleTimeString('th-TH', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  timeZone: 'Asia/Bangkok'
+                })
               }))
+              if (result.spoof_detected && result.spoof_image_b64) {
+                onSpoofDetected?.({
+                  image_b64: result.spoof_image_b64,
+                  timestamp: result.spoof_timestamp,
+                  spoof_count: result.spoof_count
+                })
+              }
             } else if (response.status === 400) {
               const errorData = await response.json()
               console.log('📵 Motion frame blocked (normal):', errorData.message)

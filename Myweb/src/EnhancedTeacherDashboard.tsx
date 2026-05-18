@@ -9,7 +9,21 @@ import config from './config'
 import image from './utils/logo/image.png' 
 import type { Class, AttendanceSession, AttendanceRecord, User as AppUser } from '@/types'
 
+interface SpoofEvent {
+  image_b64: string
+  timestamp: string
+  spoof_count: number
+}
+
 const EnhancedTeacherDashboard: FC = () => {
+  //spoof
+  const [spoofEvents, setSpoofEvents] = useState<SpoofEvent[]>([])
+  const [selectedSpoofImage, setSelectedSpoofImage] = useState<SpoofEvent | null>(null)
+
+  const handleSpoofDetected = (event: SpoofEvent) => {
+  setSpoofEvents(prev => [event, ...prev]) // ใหม่สุดขึ้นก่อน
+  }
+
   const { user, signOut } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
   const [sessions, setSessions] = useState<any[]>([])
@@ -155,10 +169,14 @@ const EnhancedTeacherDashboard: FC = () => {
         const selectedSession = motionSession || activeSessions[0]
         
         setCurrentSession(selectedSession)
+        console.log('start_time:', selectedSession.start_time)
+        console.log('end_time:', selectedSession.end_time)
         await fetchAttendanceRecords(selectedSession.id)
       } else {
         setCurrentSession(null)
         setAttendanceRecords([])
+        setSpoofEvents([])
+        setSelectedSpoofImage(null)
       }
 
     } catch (error) {
@@ -259,59 +277,68 @@ const EnhancedTeacherDashboard: FC = () => {
   }
 
 
-  const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
-    if (!currentSession) {
-      Swal.fire({
-        icon: 'error',
-        title: 'เกิดข้อผิดพลาด',
-        text: 'ไม่พบเซสชันที่ใช้งานอยู่'
-      })
-      return
-    }
-
-    setActionLoading(true)
-
-    try {
-      const formData = new FormData()
-      formData.append('session_id', currentSession.id)
-      formData.append('image', imageBlob, 'manual_capture.jpg')
-      formData.append('force_capture', 'true')
-
-      const response = await fetch(`${FASTAPI_URL}/api/motion/manual-capture`, {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'Failed to take manual capture')
-      }
-
-      const result = await response.json()
-      Swal.fire({
-        icon: 'success',
-        title: 'Manual Capture สำเร็จ!',
-        text: `พบใบหน้า: ${result.faces_detected} คน`,
-        timer: 3000,
-        showConfirmButton: false
-      })
-      
-      // Refresh attendance records
-      setTimeout(() => {
-        fetchAttendanceRecords(currentSession.id)
-      }, 2000)
-      
-    } catch (error: any) {
-      console.error('Error taking manual capture:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'เกิดข้อผิดพลาด',
-        text: 'เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message
-      })
-    } finally {
-      setActionLoading(false)
-    }
+const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
+  if (!currentSession) {
+    Swal.fire({
+      icon: 'error',
+      title: 'เกิดข้อผิดพลาด',
+      text: 'ไม่พบเซสชันที่ใช้งานอยู่'
+    })
+    return
   }
+
+  setActionLoading(true)
+
+  try {
+    const formData = new FormData()
+    formData.append('session_id', currentSession.id)
+    formData.append('image', imageBlob, 'manual_capture.jpg')
+    formData.append('force_capture', 'true')
+
+    const response = await fetch(`${FASTAPI_URL}/api/motion/manual-capture`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.detail || 'Failed to take manual capture')
+    }
+
+    const result = await response.json()
+
+    // รับ spoof data
+    if (result.spoof_detected && result.spoof_image_b64) {
+      handleSpoofDetected({
+        image_b64: result.spoof_image_b64,
+        timestamp: result.spoof_timestamp,
+        spoof_count: result.spoof_count
+      })
+    }
+
+    Swal.fire({
+      icon: 'success',
+      title: 'Manual Capture สำเร็จ!',
+      text: `พบใบหน้าจริง: ${result.faces_detected} คน${result.spoof_detected ? ` | ⚠️ หน้าปลอม: ${result.spoof_count} คน` : ''}`,
+      timer: 3000,
+      showConfirmButton: false
+    })
+    
+    setTimeout(() => {
+      fetchAttendanceRecords(currentSession.id)
+    }, 2000)
+    
+  } catch (error: any) {
+    console.error('Error taking manual capture:', error)
+    Swal.fire({
+      icon: 'error',
+      title: 'เกิดข้อผิดพลาด',
+      text: 'เกิดข้อผิดพลาดในการถ่ายภาพ: ' + error.message
+    })
+  } finally {
+    setActionLoading(false)
+  }
+}
 
   const fetchMotionStats = async () => {
     if (!currentSession) return
@@ -321,6 +348,7 @@ const EnhancedTeacherDashboard: FC = () => {
       
       if (response.ok) {
         const data = await response.json()
+        console.log('motionStats data:', data)
         
         if (data.session_type === 'motion_detection' || data.success) {
           setMotionStats(data)
@@ -762,8 +790,38 @@ const handleConfirmStartSession = async () => {
                 <h2 className="text-2xl font-semibold text-gray-900">{currentSession.classes?.subject_name}</h2>
                 <p className="text-gray-500 font-medium">รหัสคลาส: {currentSession.classes?.class_code}</p>
               </div>
+              <div className="flex flex-wrap gap-4 mt-3">
+
+
+              {/*เวลาเข้าเรียน มาสาย*/}
+            <div className="flex items-center space-x-2 text-sm">
+              <span className="text-gray-400">🟢 เริ่มเซสชัน:</span>
+              <span className="font-semibold text-gray-700">
+                {currentSession.start_time?.split('T')[1]?.slice(0, 5) || '-'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 text-sm">
+              <span className="text-gray-400">⚠️ เข้าสายหลัง:</span>
+              <span className="font-semibold text-yellow-600">
+                {currentSession.start_time && currentSession.on_time_limit_minutes
+                  ? new Date(
+                      new Date(currentSession.start_time).getTime() +
+                      currentSession.on_time_limit_minutes * 60000
+                    ).toISOString().split('T')[1]?.slice(0, 5)
+                  : '-'}
+              </span>
+            </div>
+            <div className="flex items-center space-x-2 text-sm">
+              <span className="text-gray-400">🔴 จบเซสชัน:</span>
+              <span className="font-semibold text-gray-700">
+                {currentSession.end_time?.split('T')[1]?.slice(0, 5) || '-'}
+              </span>
+            </div>
+          </div>
+
               
               <div className="flex flex-wrap gap-3">
+                {/*
                 <button
                   onClick={() => setShowManualCaptureModal(true)}
                   disabled={currentSession.session_type !== 'motion_detection'}
@@ -782,7 +840,7 @@ const handleConfirmStartSession = async () => {
                   className="apple-button-secondary bg-white py-2.5 text-sm"
                 >
                   📊 รายละเอียด
-                </button>
+                </button> */}
                 <button
                   onClick={() => endSession(currentSession.id)}
                   disabled={actionLoading}
@@ -797,133 +855,229 @@ const handleConfirmStartSession = async () => {
               <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
                 <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
                   <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Motion Events</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.live_stats?.motion_events || 0}</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.motion_events || 0}</p>
                 </div>
                 <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
                   <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Snapshots</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.live_stats?.snapshots_taken || 0}</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.snapshots_taken || 0}</p>
                 </div>
                 <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
                   <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Efficiency</p>
                   <p className="text-2xl font-semibold text-gray-900">
-                    {Math.round((motionStats.live_stats?.snapshot_efficiency || 0) * 100)}%
+                    {motionStats.snapshots_taken && motionStats.motion_events
+                      ? Math.round((motionStats.snapshots_taken / motionStats.motion_events) * 100)
+                      : 0}%
                   </p>
                 </div>
                 <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Queue Size</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.processing?.total_queue_size || 0}</p>
+                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Attendance</p>
+                  <p className="text-2xl font-semibold text-gray-900">{motionStats.attendance_records || 0}</p>
                 </div>
               </div>
             )}
           </div>
         )}
-        {currentSession && (
-        <div className="glass-card overflow-hidden mb-10">
-          <div className="p-6 border-b border-white/40 bg-white/30 flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <span className="flex h-3 w-3 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-              </span>
-              <h2 className="text-xl font-semibold text-gray-900">นักเรียนที่เช็คชื่อแล้ว</h2>
+
+        
+      {selectedSpoofImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setSelectedSpoofImage(null)}
+          />
+          <div className="relative w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-red-100 bg-red-50/50 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">⚠️ ตรวจพบใบหน้าปลอม</h3>
+                <p className="text-sm text-gray-500">
+                  {selectedSpoofImage.timestamp.split('T')[1]?.slice(0, 5)}
+                  {' · '}พบ {selectedSpoofImage.spoof_count} ใบหน้า
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedSpoofImage(null)}
+                className="w-8 h-8 rounded-full bg-white/50 flex items-center justify-center text-gray-500 hover:bg-white transition-all"
+              >
+                ✕
+              </button>
             </div>
-            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-              {attendanceRecords.length} คน
-            </span>
-          </div>
 
-          <div className="p-6">
-            {attendanceRecords.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <div className="text-4xl mb-3">👀</div>
-                <p className="font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
-                <p className="text-sm">ระบบจะอัปเดตอัตโนมัติทุก 8 วินาที</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-96 overflow-y-auto pr-1">
-                {attendanceRecords.map((record, index) => (
-                  <div
-                    key={record.id || index}
-                    className="flex items-center space-x-4 p-4 bg-white/50 backdrop-blur-sm rounded-2xl border border-white/60"
-                  >
-                    {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-sm flex-shrink-0">
-                      {record.users?.full_name?.charAt(0) || '?'}
-                    </div>
+            {/* Image */}
+            <div className="p-6">
+              <img
+                src={`data:image/jpeg;base64,${selectedSpoofImage.image_b64}`}
+                alt="spoof detected"
+                className="w-full rounded-2xl object-contain max-h-[60vh] border border-red-200"
+              />
+            </div>
 
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">
-                        {record.users?.full_name || 'Unknown'}
-                      </p>
-                      <p className="text-xs text-gray-400">{record.users?.school_id || 'N/A'}</p>
-                      
-                      {/* Accuracy Bar */}
-                      {record.face_match_score != null && (
-                        <div className="mt-1.5">
-                          <p className="text-xs text-gray-400 mb-1">ความแม่นยำ</p>
-                          <div className="flex items-center space-x-2">
-                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  record.face_match_score >= 0.8
-                                    ? 'bg-green-500'
-                                    : record.face_match_score >= 0.6
-                                    ? 'bg-yellow-400'
-                                    : 'bg-red-400'
-                                }`}
-                                style={{ width: `${Math.round(record.face_match_score * 100)}%` }}
-                              />
-                            </div>
-                            <span className={`text-xs font-bold ${
-                              record.face_match_score >= 0.8
-                                ? 'text-green-600'
-                                : record.face_match_score >= 0.6
-                                ? 'text-yellow-600'
-                                : 'text-red-500'
-                            }`}>
-                              {Math.round(record.face_match_score * 100)}%
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Status + Time */}
-                    <div className="text-right flex-shrink-0">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                        record.status === 'present'
-                          ? 'bg-green-100 text-green-700'
-                          : record.status === 'late'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {record.status === 'present' ? 'มา' : record.status === 'late' ? 'สาย' : record.status}
-                      </span>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {record.check_in_time
-                          ? record.check_in_time.split('T')[1]?.slice(0, 5) 
-                            || record.check_in_time.split(' ')[1]?.slice(0, 5)
-                          : ''}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Footer */}
+            <div className="p-6 pt-0">
+              <button
+                onClick={() => setSelectedSpoofImage(null)}
+                className="w-full apple-button-secondary py-3 text-sm"
+              >
+                ปิด
+              </button>
+            </div>
           </div>
         </div>
       )}
-        <div className="mb-10">
-          <div className="glass-card p-2 overflow-hidden">
-            <LiveVideoStream
-              currentSession={currentSession}
-              isSessionActive={currentSession !== null}
-              onManualCapture={handleManualCaptureFromVideo}
-              motionStats={motionStats}
-            />
-          </div>
-        </div>
+                  {/* Live Camera + Attendance Panel */}
+          {currentSession && (
+            <div className="flex gap-6 mb-10">
+              
+              {/* Left — Camera 70% */}
+              <div className="w-[80%]">
+                <div className="glass-card p-2 overflow-hidden h-full">
+                  <LiveVideoStream
+                    currentSession={currentSession}
+                    isSessionActive={currentSession !== null}
+                    onManualCapture={handleManualCaptureFromVideo}
+                    motionStats={motionStats}
+                    onSpoofDetected={handleSpoofDetected}
+                  />
+                </div>
+              </div>
+
+              {/* Right — Panel 30% */}
+              <div className="w-[20%] flex flex-col gap-4">
+
+                {/* นักเรียนที่เช็คชื่อแล้ว */}
+                <div className="glass-card overflow-hidden flex-1">
+                  <div className="p-4 border-b border-white/40 bg-white/30 flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                      <span className="flex h-2.5 w-2.5 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                      </span>
+                      <h2 className="text-sm font-semibold text-gray-900">นักเรียนที่เช็คชื่อแล้ว</h2>
+                    </div>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {attendanceRecords.length} คน
+                    </span>
+                  </div>
+
+                  <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
+                    {attendanceRecords.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <div className="text-3xl mb-2">👀</div>
+                        <p className="text-xs font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
+                      </div>
+                    ) : (
+                      <div className="p-3 space-y-2">
+                        {attendanceRecords.map((record, index) => (
+                          <div
+                            key={record.id || index}
+                            className="flex items-center space-x-3 p-3 bg-white/50 rounded-xl border border-white/60"
+                          >
+                            {/* Avatar */}
+                            <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-xs flex-shrink-0">
+                              {record.users?.full_name?.charAt(0) || '?'}
+                            </div>
+
+                            {/* Info */}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-xs truncate">
+                                {record.users?.full_name || 'Unknown'}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{record.users?.school_id || 'N/A'}</p>
+                              {record.face_match_score != null && (
+                                <div className="flex items-center space-x-1 mt-1">
+                                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${
+                                        record.face_match_score >= 0.8 ? 'bg-green-500'
+                                        : record.face_match_score >= 0.6 ? 'bg-yellow-400'
+                                        : 'bg-red-400'
+                                      }`}
+                                      style={{ width: `${Math.round(record.face_match_score * 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-bold ${
+                                    record.face_match_score >= 0.8 ? 'text-green-600'
+                                    : record.face_match_score >= 0.6 ? 'text-yellow-600'
+                                    : 'text-red-500'
+                                  }`}>
+                                    {Math.round(record.face_match_score * 100)}%
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Status + Time */}
+                            <div className="text-right flex-shrink-0">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                record.status === 'present' ? 'bg-green-100 text-green-700'
+                                : record.status === 'late' ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {record.status === 'present' ? 'มา' : record.status === 'late' ? 'สาย' : record.status}
+                              </span>
+                              <p className="text-[10px] text-gray-400 mt-0.5">
+                                {record.check_in_time?.split('T')[1]?.slice(0, 5) || ''}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+
+
+                {/* หน้าปลอม */}
+                {spoofEvents.length > 0 && (
+                  <div className="glass-card overflow-hidden">
+                    <div className="p-4 border-b border-white/40 bg-red-50/30 flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <span className="flex h-2.5 w-2.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                        <h2 className="text-sm font-semibold text-gray-900">⚠️ หน้าปลอม</h2>
+                      </div>
+                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                        {spoofEvents.length} ครั้ง
+                      </span>
+                    </div>
+
+                    <div className="p-3 space-y-2 overflow-y-auto" style={{ maxHeight: '200px' }}>
+                      {spoofEvents.map((event, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
+                              🚨
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900 text-xs">Unknown</p>
+                              <p className="text-[10px] text-gray-400">
+                                {event.timestamp.split('T')[1]?.slice(0, 5)} · {event.spoof_count} ใบหน้า
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setSelectedSpoofImage(event)}
+                            className="text-[10px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-500 hover:text-white transition-all"
+                          >
+                            ดูภาพ
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          )}
+
 
         {/* Stats Cards & Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">

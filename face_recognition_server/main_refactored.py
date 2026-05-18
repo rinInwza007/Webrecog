@@ -352,7 +352,13 @@ async def process_motion_snapshot(
             "motion_strength": motion_strength,
             "new_records": result.get('new_records', 0),
             "faces_detected": result.get('faces_detected', 0),
-            "processing_time_ms": int(result.get('processing_time', 0) * 1000)
+            "processing_time_ms": int(result.get('processing_time', 0) * 1000),
+
+            # Spoof detection results
+            "spoof_detected": result.get('spoof_detected', False),
+            "spoof_count": result.get('spoof_count', 0),
+            "spoof_timestamp": result.get('spoof_timestamp'),
+            "spoof_image_b64": result.get('spoof_image_b64')    
         }
         
     except Exception as e:
@@ -362,24 +368,50 @@ async def process_motion_snapshot(
 @app.post("/api/motion/manual-capture")
 async def manual_capture_motion(
     session_id: str = Form(...),
-    image_data: Optional[UploadFile] = File(None)
+    image: UploadFile = File(...)  # ← เปลี่ยนชื่อจาก image_data เป็น image
 ):
-    """Manually trigger face capture/analysis"""
     try:
-        # Check if session exists
         session_stats = motion_session_manager.get_session_stats(session_id)
         if not session_stats:
             raise HTTPException(status_code=404, detail="Session not found")
-        
-        logger.info(f"📸 Manual capture triggered for session: {session_id}")
-        
-        return {
-            "success": True,
-            "session_id": session_id,
-            "timestamp": datetime.now().isoformat(),
-            "message": "Manual capture processed"
+
+        session_result = supabase_manager.get_client().table('attendance_sessions')\
+            .select('*').eq('id', session_id).single().execute()
+        if not session_result.data:
+            raise HTTPException(status_code=404, detail="Session not found in database")
+
+        session_data = session_result.data
+        phase = motion_processor.get_phase(0)
+        config = motion_processor.get_config(phase)
+        capture_time = datetime.now().isoformat()
+
+        image_bytes = await image.read()
+
+        processing_item = {
+            'session_id': session_id,
+            'session_data': session_data,
+            'config': config,
+            'phase': phase,
+            'motion_strength': 1.0,  # manual = force capture
+            'capture_time': capture_time,
+            'image_data': image_bytes,
+            'priority': 1,
+            'trigger_type': 'manual'
         }
-        
+
+        result = await motion_processing_service.process_motion_capture(processing_item)
+
+        return {
+            "success": result['success'],
+            "session_id": session_id,
+            "faces_detected": result.get('faces_detected', 0),
+            "new_records": result.get('new_records', 0),
+            "spoof_detected": result.get('spoof_detected', False),
+            "spoof_count": result.get('spoof_count', 0),
+            "spoof_timestamp": result.get('spoof_timestamp'),
+            "spoof_image_b64": result.get('spoof_image_b64')
+        }
+
     except Exception as e:
         logger.error(f"Error in manual capture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -418,7 +450,7 @@ async def enroll_face_advanced(
                 image_array = np.array(image)
                 
                 # Detect faces
-                face_locations = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="cnn")
+                face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="cnn")
                 
                 if not face_locations:
                     image_analysis.append({'index': idx+1, 'status': 'no_face'})

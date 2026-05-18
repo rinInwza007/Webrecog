@@ -498,7 +498,7 @@ class MotionProcessingService:
                 return {'success': False, 'reason': 'no_students', 'new_records': 0}
             
             # Process faces with advanced matching
-            detected_faces = process_faces_with_advanced_matching( # ส่งภาพและข้อมูลที่จำเป็นไปยัง AI module เพื่อประมวลผลและตรวจสอบใบหน้า
+            result_matching = process_faces_with_advanced_matching( # ส่งภาพและข้อมูลที่จำเป็นไปยัง AI module เพื่อประมวลผลและตรวจสอบใบหน้า
                 session_id,
                 image_array,
                 enrolled_students,
@@ -509,6 +509,11 @@ class MotionProcessingService:
             )
             
             # Record attendance
+            detected_faces = result_matching['detected_faces']
+            spoof_count = result_matching.get('spoof_count', 0)
+            spoof_timestamp = result_matching.get('spoof_timestamp')
+            spoof_image_b64 = result_matching.get('spoof_image_b64')
+
             new_records = 0
             for face_info in detected_faces:
                 success = await self.attendance_service.record_attendance_from_face( # ส่งข้อมูลใบหน้าที่ตรวจจับได้ไปยัง AttendanceRecordingService เพื่อบันทึก attendance
@@ -517,6 +522,10 @@ class MotionProcessingService:
                 )
                 if success:
                     new_records += 1
+            if new_records > 0:
+                with motion_session_manager.lock:
+                    if session_id in motion_session_manager.sessions:
+                        motion_session_manager.sessions[session_id]['stats']['attendance_records'] += new_records
             
             processing_time = time.time() - start_time
             
@@ -550,7 +559,13 @@ class MotionProcessingService:
                 'success': True,
                 'new_records': new_records,
                 'faces_detected': len(detected_faces),
-                'processing_time': processing_time
+                'processing_time': processing_time,
+
+                # Spoof detection results
+                'spoof_detected': spoof_count > 0,
+                'spoof_count': spoof_count,
+                'spoof_timestamp': spoof_timestamp,
+                'spoof_image_b64': spoof_image_b64
             }
             
         except Exception as e:
