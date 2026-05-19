@@ -126,10 +126,18 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
 
     } catch (error: any) {
       console.error('❌ Error starting video stream:', error)
-      setCameraError(`ไม่สามารถเปิดกล้องได้: ${error.message}`)
-    }
+      
+      if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        setCameraError('ไม่พบกล้อง กรุณาเชื่อมต่อกล้องแล้วลองใหม่')
+      } else if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setCameraError('ไม่ได้รับอนุญาตใช้กล้อง กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์')
+      } else if (error.name === 'NotReadableError') {
+        setCameraError('กล้องถูกใช้งานโดยโปรแกรมอื่นอยู่ กรุณาปิดโปรแกรมนั้นก่อน')
+      } else {
+        setCameraError(`ไม่สามารถเปิดกล้องได้: ${error.message}`)
+      }
   }
-
+  }
   const stopVideoStream = () => {
     try {
       if (streamRef.current) {
@@ -420,6 +428,13 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
           </div>
         )}
       </div>
+      {cameraError && (
+  <div className="absolute inset-0 flex items-center justify-center bg-red-500/80 backdrop-blur-sm">
+    ...
+    <p className="text-sm text-white/80 mb-6">{cameraError}</p>
+    ...
+  </div>
+)}
 
       <div className="relative bg-black rounded-3xl overflow-hidden mb-8 shadow-2xl ring-1 ring-white/20" style={{ aspectRatio: '16/9' }}>
         <video

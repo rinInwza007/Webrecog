@@ -33,10 +33,20 @@ const Login: FC<LoginProps> = ({ onSwitchToRegister }) => {
       const result = await signIn(email, password)
 
       if (result.error) {
-        const authError = result.error as AuthError
-        setError(authError.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
-        return
+      const authError = result.error as AuthError
+      
+      // แปลง error message เป็นภาษาไทย
+      const errorMessages: Record<string, string> = {
+        'Invalid login credentials': 'Email หรือรหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง',
+        'Email not confirmed': 'กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ',
+        'Too many requests': 'ลองใหม่อีกครั้งในภายหลัง',
+        'User not found': 'ไม่พบบัญชีผู้ใช้นี้',
       }
+      
+      const message = authError.message || ''
+      setError(errorMessages[message] || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
+      return
+    }
 
       console.log('Login success:', email)
       // redirect จะถูกจัดการโดย AppRouter อัตโนมัติเมื่อ appUser ใน AuthContext อัปเดต
