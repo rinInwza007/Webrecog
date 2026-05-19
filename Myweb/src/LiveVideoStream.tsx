@@ -20,6 +20,7 @@ interface LiveVideoStreamProps {
     }
   }
   onSpoofDetected?: (event: SpoofEvent) => void
+  onAttendanceDetected?: () => void
 }
 
 interface VideoStats {
@@ -34,8 +35,8 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
   isSessionActive, 
   onManualCapture, 
   motionStats,
-  onSpoofDetected
-  
+  onSpoofDetected,
+  onAttendanceDetected
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -307,6 +308,11 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
               const result = await response.json()
               console.log('📸 Motion frame sent successfully:', result.message)
               
+              // If backend indicates a new attendance or successful processing, notify parent
+              if (result.success || result.attendance_detected) {
+                onAttendanceDetected?.()
+              }
+
               setVideoStats(prev => ({
                 ...prev,
                 framesSent: prev.framesSent + 1,
