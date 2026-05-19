@@ -37,10 +37,9 @@ const StudentDashboard: FC = () => {
   }, [user, appUser])
 
   const fetchStudentData = async () => {
-    if (!user || !appUser) return
-
     try {
       setLoading(true)
+      if (!user || !appUser) return
       
       // 1. Fetch Enrollments
       const { data: enrollments, error: enrollmentError } = await supabase
