@@ -1,6 +1,7 @@
 import { useState, useEffect, FC } from 'react'
 import { supabase } from './supabaseClient'
 import type { Class, AttendanceSession, AttendanceRecord } from '@/types'
+import Swal from 'sweetalert2'
 
 interface ClassDetailViewProps {
   classData: Class
@@ -316,6 +317,15 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
   }
 
   const exportSummaryToCSV = () => {
+    if (attendanceData.recentAttendance.length === 0) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'ไม่มีข้อมูล',
+      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มเซสชันก่อนส่งออกข้อมูล'
+    })
+    setShowExportModal(false)
+    return
+  }
     const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', 'อีเมล', 'เซสชันทั้งหมด', 'มาเรียน', 'สาย', 'ขาด', 'ร้อยละการเข้าเรียน']
     const rows = attendanceData.topStudents.map(student => {
       const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
@@ -332,6 +342,15 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
   }
 
   const exportMatrixToCSV = () => {
+    if (attendanceData.sessions.length === 0) {
+    Swal.fire({
+      icon: 'warning',
+      title: 'ไม่มีข้อมูล',
+      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มเซสชันก่อนส่งออกข้อมูล'
+    })
+    setShowExportModal(false)
+    return
+    }
     // 1. Get all sessions sorted by date
     const sortedSessions = [...attendanceData.sessions].sort((a, b) => 
       new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
