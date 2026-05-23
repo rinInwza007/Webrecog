@@ -6,6 +6,8 @@ import Swal from 'sweetalert2'
 interface ClassDetailViewProps {
   classData: Class
   onBack: () => void
+  currentSession: any | null
+  onStartAttendance: (cls: Class) => void
 }
 
 interface AttendanceStats {
@@ -35,7 +37,7 @@ interface ClassAttendanceData {
   attendanceStats: AttendanceStats
 }
 
-const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
+const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack, currentSession, onStartAttendance }) => {
   const [attendanceData, setAttendanceData] = useState<ClassAttendanceData>({
     sessions: [],
     totalSessions: 0,
@@ -53,6 +55,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
   })
   const [loading, setLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState('overview')
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [updateLoading, setUpdateLoading] = useState(false)
   const [dateFilter, setDateFilter] = useState('all') // 'all', 'week', 'month'
   const [statusFilter, setStatusFilter] = useState('all') // 'all', 'present', 'late', 'absent'
   const [studentFilter, setStudentFilter] = useState('')
@@ -202,6 +206,10 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
 
       setAttendanceData(newData)
 
+      if (!selectedSessionId && sessions && sessions.length > 0) {
+        setSelectedSessionId(sessions[0].id)
+      }
+
       if (silent && allAttendanceRecords.length > attendanceData.recentAttendance.length) {
         setRealTimeUpdate({
           type: 'new_attendance',
@@ -214,6 +222,63 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
       console.error('Error fetching comprehensive class data:', error)
     } finally {
       if (!silent) setLoading(false)
+    }
+  }
+
+  const updateAttendanceStatus = async (sessionId: string, studentEmail: string, studentId: string, newStatus: AttendanceRecord['status']) => {
+    try {
+      setUpdateLoading(true)
+      
+      // Check if record exists
+      const { data: existingRecord } = await supabase
+        .from('attendance_records')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('student_email', studentEmail)
+        .maybeSingle()
+
+      if (existingRecord) {
+        const { error } = await supabase
+          .from('attendance_records')
+          .update({ status: newStatus })
+          .eq('id', existingRecord.id)
+        
+        if (error) throw error
+      } else {
+        // Create new record (for leave/absent)
+        const { error } = await supabase
+          .from('attendance_records')
+          .insert([{
+            session_id: sessionId,
+            student_email: studentEmail,
+            student_id: studentId,
+            status: newStatus,
+            check_in_time: new Date().toISOString(),
+            detection_method: 'manual',
+            trigger_type: 'manual'
+          }])
+        
+        if (error) throw error
+      }
+
+      await fetchClassAttendanceData(true)
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'บันทึกสำเร็จ',
+        text: `เปลี่ยนสถานะเป็น "${newStatus === 'leave' ? 'ลา' : newStatus === 'present' ? 'มาเรียน' : newStatus === 'late' ? 'มาสาย' : 'ขาด'}" เรียบร้อยแล้ว`,
+        timer: 1500,
+        showConfirmButton: false
+      })
+    } catch (error: any) {
+      console.error('Error updating status:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: error.message
+      })
+    } finally {
+      setUpdateLoading(false)
     }
   }
 
@@ -321,12 +386,12 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
     Swal.fire({
       icon: 'warning',
       title: 'ไม่มีข้อมูล',
-      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มเซสชันก่อนส่งออกข้อมูล'
+      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มคาบเรียนก่อนส่งออกข้อมูล'
     })
     setShowExportModal(false)
     return
   }
-    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', 'อีเมล', 'เซสชันทั้งหมด', 'มาเรียน', 'สาย', 'ขาด', 'ร้อยละการเข้าเรียน']
+    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', 'อีเมล', 'คาบเรียนทั้งหมด', 'มาเรียน', 'สาย', 'ขาด', 'ร้อยละการเข้าเรียน']
     const rows = attendanceData.topStudents.map(student => {
       const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
       const present = studentRecords.filter(r => r.status === 'present').length
@@ -346,7 +411,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
     Swal.fire({
       icon: 'warning',
       title: 'ไม่มีข้อมูล',
-      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มเซสชันก่อนส่งออกข้อมูล'
+      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มคาบเรียนก่อนส่งออกข้อมูล'
     })
     setShowExportModal(false)
     return
@@ -438,6 +503,22 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
               </div>
             </div>
             <div className="flex items-center space-x-3 w-full md:w-auto">
+              {currentSession && currentSession.class_id === classData.class_id ? (
+                <div className="flex-1 md:flex-none flex items-center bg-green-500/10 text-green-700 border border-green-200 px-6 py-3 rounded-2xl animate-pulse">
+                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                  <span className="text-sm font-bold uppercase tracking-wider">กำลังเช็คชื่อ...</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => onStartAttendance(classData)}
+                  className="flex-1 md:flex-none apple-button-primary py-3 px-6 flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  <span>เริ่มเช็คชื่อ</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowExportModal(true)}
                 className="flex-1 md:flex-none apple-button-secondary bg-green-500/10 text-green-700 border-green-200 hover:bg-green-500 hover:text-white flex items-center justify-center space-x-2 py-3 px-6"
@@ -467,7 +548,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
             <p className="text-3xl font-semibold text-gray-900">{attendanceData.totalStudents}</p>
           </div>
           <div className="glass-card p-6 border-white/60">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">เซสชันทั้งหมด</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">คาบเรียนทั้งหมด</p>
             <p className="text-3xl font-semibold text-gray-900">{attendanceData.totalSessions}</p>
           </div>
           <div className="glass-card p-6 border-[#0071e3]/20 bg-[#0071e3]/5">
@@ -488,7 +569,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
                 {id: 'overview', label: 'ภาพรวม'}, 
                 {id: 'students', label: 'นักเรียน'}, 
                 {id: 'attendance', label: 'บันทึกการเช็คชื่อ'}, 
-                {id: 'analytics', label: 'วิเคราะห์'}
+                {id: 'analytics', label: 'วิเคราะห์'},
+                {id: 'sessions', label: 'คาบเรียน'}
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -514,11 +596,11 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
                  </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="glass-morphism p-8 flex flex-col h-full">
-                       <h3 className="text-lg font-semibold mb-4 text-gray-900">เซสชันล่าสุด</h3>
+                       <h3 className="text-lg font-semibold mb-4 text-gray-900">คาบเรียนล่าสุด</h3>
                        {attendanceData.sessions.length > 0 ? (
                          <div className="space-y-4 flex-1">
                            <div className="p-4 bg-[#0071e3]/5 rounded-2xl border border-[#0071e3]/10">
-                             <p className="text-xs font-bold text-[#0071e3] uppercase mb-1">เซสชันล่าสุดเมื่อ</p>
+                             <p className="text-xs font-bold text-[#0071e3] uppercase mb-1">คาบเรียนล่าสุดเมื่อ</p>
                              <p className="text-lg font-semibold text-gray-900">
                                {new Date(attendanceData.sessions[0].start_time).toLocaleString('th-TH', { 
                                  dateStyle: 'medium', 
@@ -858,6 +940,136 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack }) => {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {selectedTab === 'sessions' && (
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div>
+                    <h2 className="text-2xl font-semibold tracking-tight text-gray-900">จัดการรายคาบเรียน</h2>
+                    <p className="text-gray-500 text-sm mt-1">ดูรายละเอียดและแก้ไขสถานะการเช็คชื่อรายคาบ</p>
+                  </div>
+                  
+                  {/* Session Selector */}
+                  <div className="w-full md:w-72">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">เลือกคาบเรียน</label>
+                    <select 
+                      className="apple-input w-full py-3 pr-10 appearance-none bg-no-repeat bg-[right_1rem_center]"
+                      value={selectedSessionId || ''}
+                      onChange={(e) => setSelectedSessionId(e.target.value)}
+                    >
+                      {attendanceData.sessions.map((session, idx) => (
+                        <option key={session.id} value={session.id}>
+                          คาบที่ {attendanceData.sessions.length - idx}: {new Date(session.start_time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {selectedSessionId ? (
+                  <div className="space-y-6">
+                    {/* Session Summary Card */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      {(() => {
+                        const stats = getAttendanceStatsForSession(selectedSessionId)
+                        return (
+                          <>
+                            <div className="glass-morphism p-4 border-green-100 bg-green-50/30">
+                              <p className="text-[10px] text-green-600 font-bold uppercase mb-1">มาเรียน</p>
+                              <p className="text-2xl font-bold text-green-700">{stats.present}</p>
+                            </div>
+                            <div className="glass-morphism p-4 border-yellow-100 bg-yellow-50/30">
+                              <p className="text-[10px] text-yellow-600 font-bold uppercase mb-1">มาสาย</p>
+                              <p className="text-2xl font-bold text-yellow-700">{stats.late}</p>
+                            </div>
+                            <div className="glass-morphism p-4 border-red-100 bg-red-50/30">
+                              <p className="text-[10px] text-red-600 font-bold uppercase mb-1">ขาดเรียน</p>
+                              <p className="text-2xl font-bold text-red-700">{stats.absent}</p>
+                            </div>
+                            <div className="glass-morphism p-4 border-blue-100 bg-blue-50/30">
+                              <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">ทั้งหมด</p>
+                              <p className="text-2xl font-bold text-blue-700">{attendanceData.totalStudents}</p>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+
+                    {/* Attendance Table for Selected Session */}
+                    <div className="overflow-x-auto rounded-3xl border border-gray-100 bg-white/30">
+                      <table className="min-w-full divide-y divide-gray-100">
+                        <thead className="bg-gray-50/50">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
+                            <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">เวลาเช็คชื่อ</th>
+                            <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">สถานะ</th>
+                            <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">จัดการ</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {attendanceData.enrolledStudents.map((student, idx) => {
+                            const record = attendanceData.recentAttendance.find(
+                              r => r.session_id === selectedSessionId && r.student_id === student.student_id
+                            )
+                            const status = record ? record.status : 'absent'
+                            
+                            return (
+                              <tr key={idx} className="hover:bg-white/50 transition-colors">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="font-semibold text-gray-900">{student.name}</div>
+                                  <div className="text-xs text-gray-400">{student.student_id}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                                  {record ? new Date(record.check_in_time).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-center">
+                                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                                    status === 'present' ? 'bg-green-100 text-green-600' : 
+                                    status === 'late' ? 'bg-yellow-100 text-yellow-600' : 
+                                    status === 'leave' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'
+                                  }`}>
+                                    {status === 'present' ? 'มาเรียน' : 
+                                     status === 'late' ? 'มาสาย' : 
+                                     status === 'leave' ? 'ลา' : 'ขาดเรียน'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-right">
+                                  <div className="flex justify-end space-x-2">
+                                    {status === 'absent' ? (
+                                      <button 
+                                        onClick={() => updateAttendanceStatus(selectedSessionId, student.email, student.student_id, 'leave')}
+                                        disabled={updateLoading}
+                                        className="text-[10px] font-bold text-[#0071e3] hover:underline disabled:opacity-30"
+                                      >
+                                        เปลี่ยนเป็น "ลา"
+                                      </button>
+                                    ) : status === 'leave' ? (
+                                      <button 
+                                        onClick={() => updateAttendanceStatus(selectedSessionId, student.email, student.student_id, 'absent')}
+                                        disabled={updateLoading}
+                                        className="text-[10px] font-bold text-red-500 hover:underline disabled:opacity-30"
+                                      >
+                                        เปลี่ยนเป็น "ขาด"
+                                      </button>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-300">แก้ไขไม่ได้</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
+                    <p className="text-gray-400">กรุณาเลือกคาบเรียนเพื่อดูข้อมูล</p>
+                  </div>
+                )}
               </div>
             )}
           </div>

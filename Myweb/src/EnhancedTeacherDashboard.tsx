@@ -230,6 +230,7 @@ const EnhancedTeacherDashboard: FC = () => {
               full_name: 'Unknown User', 
               school_id: record.student_id || 'N/A',
               email: record.student_email
+              
             }
           })
         }
@@ -282,7 +283,7 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
     Swal.fire({
       icon: 'error',
       title: 'เกิดข้อผิดพลาด',
-      text: 'ไม่พบเซสชันที่ใช้งานอยู่'
+      text: 'ไม่พบคาบเรียนที่ใช้งานอยู่'
     })
     return
   }
@@ -473,7 +474,7 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       Swal.fire({
         icon: 'success',
         title: 'สำเร็จ',
-        text: 'เริ่มเซสชัน Motion Detection สำเร็จ!',
+        text: 'เริ่มคาบเรียน Motion Detection สำเร็จ!',
         timer: 2000,
         showConfirmButton: false
       })
@@ -486,7 +487,7 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       Swal.fire({
         icon: 'error',
         title: 'เกิดข้อผิดพลาด',
-        text: 'เกิดข้อผิดพลาดในการเริ่มเซสชัน: ' + error.message
+        text: 'เกิดข้อผิดพลาดในการเริ่มคาบเรียน: ' + error.message
       })
     } finally {
       setActionLoading(false)
@@ -505,16 +506,17 @@ const handleConfirmStartSession = async () => {
   await startMotionDetectionSession(selectedClassForSession.class_id)
   setShowSessionConfigModal(false)
   setSelectedClassForSession(null)
+  setShowClassDetail(false) // กลับมาหน้าหลักเพื่อดูไลฟ์สด
 }
 
   const endSession = async (sessionId: string) => {
     Swal.fire({
-      title: 'คุณต้องการจบเซสชันนี้หรือไม่?',
+      title: 'คุณต้องการจบคาบเรียนนี้หรือไม่?',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'ใช่, จบเซสชัน!',
+      confirmButtonText: 'ใช่, จบคาบเรียน!',
       cancelButtonText: 'ยกเลิก'
     }).then(async (result) => {
       if (result.isConfirmed) {
@@ -534,7 +536,7 @@ const handleConfirmStartSession = async () => {
           Swal.fire({
             icon: 'success',
             title: 'สำเร็จ',
-            text: 'จบเซสชันสำเร็จ!',
+            text: 'จบคาบเรียนสำเร็จ!',
             timer: 2000,
             showConfirmButton: false
           })
@@ -544,7 +546,7 @@ const handleConfirmStartSession = async () => {
           Swal.fire({
             icon: 'error',
             title: 'เกิดข้อผิดพลาด',
-            text: `เกิดข้อผิดพลาดในการจบเซสชัน: ${error.message}`
+            text: `เกิดข้อผิดพลาดในการจบคาบเรียน: ${error.message}`
           })
         } finally {
           setActionLoading(false)
@@ -589,7 +591,7 @@ const handleConfirmStartSession = async () => {
       Swal.fire({
         icon: 'error',
         title: 'เกิดข้อผิดพลาด',
-        text: 'ไม่พบเซสชันที่ใช้งานอยู่'
+        text: 'ไม่พบคาบเรียนที่ใช้งานอยู่'
       })
       return
     }
@@ -725,16 +727,6 @@ const handleConfirmStartSession = async () => {
     })
   }
 
-  // ถ้ากำลังแสดง Class Detail View ให้แสดง component นั้น
-  if (showClassDetail && selectedClass) {
-    return (
-      <ClassDetailView 
-        classData={selectedClass} 
-        onBack={handleBackFromClassDetail}
-      />
-    )
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -748,453 +740,453 @@ const handleConfirmStartSession = async () => {
 
   return ( 
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm rounded-xl">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                <img src={image} alt="Logo" className="h-14 w-14 object-contain" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-gray-900">แดชบอร์ดอาจารย์</h1>
-                <p className="text-gray-500 text-sm font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
-              </div>
-            </div>
-            <button
-              onClick={handleSignOut}
-              className="apple-button-secondary py-2 px-5 text-sm flex items-center space-x-2 border-red-100 hover:bg-red-50 hover:text-red-600 transition-all"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span>ออกจากระบบ</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        {/* Current Session Status */}
-        {currentSession && (
-          <div className="glass-card bg-[#0071e3]/10 border-[#0071e3]/20 p-8 mb-10 overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[#0071e3]/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
-            <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div>
-                <div className="flex items-center space-x-2 mb-2">
-                  <span className="flex h-3 w-3 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                  </span>
-                  <h3 className="text-sm font-bold text-[#0071e3] uppercase tracking-wider">เซสชันที่กำลังดำเนินการ</h3>
+      {showClassDetail && selectedClass ? (
+        <ClassDetailView 
+          classData={selectedClass} 
+          onBack={handleBackFromClassDetail}
+          currentSession={currentSession}
+          onStartAttendance={handleClassSelected}
+        />
+      ) : (
+        <>
+          {/* Header */}
+          <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm rounded-xl">
+            <div className="max-w-7xl mx-auto px-6 py-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
+                    <img src={image} alt="Logo" className="h-14 w-14 object-contain" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-semibold tracking-tight text-gray-900">แดชบอร์ดอาจารย์</h1>
+                    <p className="text-gray-500 text-sm font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
+                  </div>
                 </div>
-                <h2 className="text-2xl font-semibold text-gray-900">{currentSession.classes?.subject_name}</h2>
-                <p className="text-gray-500 font-medium">รหัสคลาส: {currentSession.classes?.class_code}</p>
-              </div>
-              <div className="flex flex-wrap gap-4 mt-3">
-
-
-              {/*เวลาเข้าเรียน มาสาย*/}
-            <div className="flex items-center space-x-2 text-sm">
-              <span className="text-gray-400">🟢 เริ่มเซสชัน:</span>
-              <span className="font-semibold text-gray-700">
-                {currentSession.start_time?.split('T')[1]?.slice(0, 5) || '-'}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm">
-              <span className="text-gray-400">⚠️ เข้าสายหลัง:</span>
-              <span className="font-semibold text-yellow-600">
-                {currentSession.start_time && currentSession.on_time_limit_minutes
-                  ? new Date(
-                      new Date(currentSession.start_time).getTime() +
-                      currentSession.on_time_limit_minutes * 60000
-                    ).toISOString().split('T')[1]?.slice(0, 5)
-                  : '-'}
-              </span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm">
-              <span className="text-gray-400">🔴 จบเซสชัน:</span>
-              <span className="font-semibold text-gray-700">
-                {currentSession.end_time?.split('T')[1]?.slice(0, 5) || '-'}
-              </span>
-            </div>
-          </div>
-
-              
-              <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => setShowManualCaptureModal(true)}
-                  disabled={currentSession.session_type !== 'motion_detection'}
-                  className="apple-button-secondary bg-white py-2.5 text-sm disabled:opacity-50"
+                  onClick={handleSignOut}
+                  className="apple-button-secondary py-2 px-5 text-sm flex items-center space-x-2 border-red-100 hover:bg-red-50 hover:text-red-600 transition-all"
                 >
-                  📸 Manual Capture
-                </button>
-                <button
-                  onClick={() => openAttendanceLogModal()}
-                  className="apple-button-secondary bg-white py-2.5 text-sm"
-                >
-                  📋 บันทึกการเช็คชื่อ
-                </button>
-                {/* <button
-                  onClick={() => setShowSessionDetailsModal(currentSession)}
-                  className="apple-button-secondary bg-white py-2.5 text-sm"
-                >
-                  📊 รายละเอียด
-                </button> */}
-                <button
-                  onClick={() => endSession(currentSession.id)}
-                  disabled={actionLoading}
-                  className="apple-button-primary bg-red-600 hover:bg-red-700 py-2.5 text-sm"
-                >
-                  🛑 จบเซสชัน
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <span>ออกจากระบบ</span>
                 </button>
               </div>
             </div>
-              
-            {motionStats && currentSession && (
-              <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
-                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Motion Events</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.motion_events || 0}</p>
-                </div>
-                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Snapshots</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.snapshots_taken || 0}</p>
-                </div>
-                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Efficiency</p>
-                  <p className="text-2xl font-semibold text-gray-900">
-                    {motionStats.snapshots_taken && motionStats.motion_events
-                      ? Math.round((motionStats.snapshots_taken / motionStats.motion_events) * 100)
-                      : 0}%
-                  </p>
-                </div>
-                <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
-                  <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Attendance</p>
-                  <p className="text-2xl font-semibold text-gray-900">{motionStats.attendance_records || 0}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          </header>
 
-        
-      {selectedSpoofImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setSelectedSpoofImage(null)}
-          />
-          <div className="relative w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-            
-            {/* Header */}
-            <div className="p-6 border-b border-red-100 bg-red-50/50 flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">⚠️ ตรวจพบใบหน้าปลอม</h3>
-                <p className="text-sm text-gray-500">
-                  {selectedSpoofImage.timestamp.split('T')[1]?.slice(0, 5)}
-                  {' · '}พบ {selectedSpoofImage.spoof_count} ใบหน้า
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedSpoofImage(null)}
-                className="w-8 h-8 rounded-full bg-white/50 flex items-center justify-center text-gray-500 hover:bg-white transition-all"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Image */}
-            <div className="p-6">
-              <img
-                src={`data:image/jpeg;base64,${selectedSpoofImage.image_b64}`}
-                alt="spoof detected"
-                className="w-full rounded-2xl object-contain max-h-[60vh] border border-red-200"
-              />
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 pt-0">
-              <button
-                onClick={() => setSelectedSpoofImage(null)}
-                className="w-full apple-button-secondary py-3 text-sm"
-              >
-                ปิด
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-                  {/* Live Camera + Attendance Panel */}
-          {currentSession && (
-            <div className="flex gap-6 mb-10">
-              
-              {/* Left — Camera 70% */}
-              <div className="w-[80%]">
-                <div className="glass-card p-2 overflow-hidden h-full">
-                  <LiveVideoStream
-                    currentSession={currentSession}
-                    isSessionActive={currentSession !== null}
-                    onManualCapture={handleManualCaptureFromVideo}
-                    motionStats={motionStats}
-                    onSpoofDetected={handleSpoofDetected}
-                    onAttendanceDetected={() => {
-                      console.log('✨ Attendance detected, refreshing records...')
-                      fetchAttendanceRecords(currentSession.id)
-                      fetchSessionLogs(currentSession.id)
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Right — Panel 30% */}
-              <div className="w-[20%] flex flex-col gap-4">
-
-                {/* นักเรียนที่เช็คชื่อแล้ว */}
-                <div className="glass-card overflow-hidden flex-1">
-                  <div className="p-4 border-b border-white/40 bg-white/30 flex justify-between items-center">
-                    <div className="flex items-center space-x-2">
-                      <span className="flex h-2.5 w-2.5 relative">
+          <div className="max-w-7xl mx-auto px-6 py-10">
+            {/* Current Session Status */}
+            {currentSession && (
+              <div className="glass-card bg-[#0071e3]/10 border-[#0071e3]/20 p-8 mb-10 overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-[#0071e3]/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div>
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="flex h-3 w-3 relative">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
                       </span>
-                      <h2 className="text-sm font-semibold text-gray-900">นักเรียนที่เช็คชื่อแล้ว</h2>
+                      <h3 className="text-sm font-bold text-[#0071e3] uppercase tracking-wider">คาบเรียนที่กำลังดำเนินการ</h3>
                     </div>
-                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                      {attendanceRecords.length} คน
-                    </span>
+                    <h2 className="text-2xl font-semibold text-gray-900">{currentSession.classes?.subject_name}</h2>
+                    <p className="text-gray-500 font-medium">รหัสคลาส: {currentSession.classes?.class_code}</p>
                   </div>
+                  <div className="flex flex-wrap gap-4 mt-3">
 
-                  <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
-                    {attendanceRecords.length === 0 ? (
-                      <div className="text-center py-8 text-gray-400">
-                        <div className="text-3xl mb-2">👀</div>
-                        <p className="text-xs font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
-                      </div>
-                    ) : (
-                      <div className="p-3 space-y-2">
-                        {attendanceRecords.map((record, index) => (
-                          <div
-                            key={record.id || index}
-                            className="flex items-center space-x-3 p-3 bg-white/50 rounded-xl border border-white/60"
-                          >
-                            {/* Avatar */}
-                            <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-xs flex-shrink-0">
-                              {record.users?.full_name?.charAt(0) || '?'}
-                            </div>
 
-                            {/* Info */}
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-xs truncate">
-                                {record.users?.full_name || 'Unknown'}
-                              </p>
-                              <p className="text-[10px] text-gray-400">{record.users?.school_id || 'N/A'}</p>
-                              {record.face_match_score != null && (
-                                <div className="flex items-center space-x-1 mt-1">
-                                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full ${
-                                        record.face_match_score >= 0.8 ? 'bg-green-500'
-                                        : record.face_match_score >= 0.6 ? 'bg-yellow-400'
-                                        : 'bg-red-400'
-                                      }`}
-                                      style={{ width: `${Math.round(record.face_match_score * 100)}%` }}
-                                    />
-                                  </div>
-                                  <span className={`text-[10px] font-bold ${
-                                    record.face_match_score >= 0.8 ? 'text-green-600'
-                                    : record.face_match_score >= 0.6 ? 'text-yellow-600'
-                                    : 'text-red-500'
-                                  }`}>
-                                    {Math.round(record.face_match_score * 100)}%
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                  {/*เวลาเข้าเรียน มาสาย*/}
+                <div className="flex items-center space-x-2 text-sm">
+                  <span className="text-gray-400">🟢 เริ่มคาบเรียน:</span>
+                  <span className="font-semibold text-gray-700">
+                    {currentSession.start_time?.split('T')[1]?.slice(0, 5) || '-'}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  <span className="text-gray-400">⚠️ เข้าสายหลัง:</span>
+                  <span className="font-semibold text-yellow-600">
+                    {currentSession.start_time && currentSession.on_time_limit_minutes
+                      ? new Date(
+                          new Date(currentSession.start_time).getTime() +
+                          currentSession.on_time_limit_minutes * 60000
+                        ).toISOString().split('T')[1]?.slice(0, 5)
+                      : '-'}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 text-sm">
+                  <span className="text-gray-400">🔴 จบคาบเรียน:</span>
+                  <span className="font-semibold text-gray-700">
+                    {currentSession.end_time?.split('T')[1]?.slice(0, 5) || '-'}
+                  </span>
+                </div>
+              </div>
 
-                            {/* Status + Time */}
-                            <div className="text-right flex-shrink-0">
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                record.status === 'present' ? 'bg-green-100 text-green-700'
-                                : record.status === 'late' ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-gray-100 text-gray-500'
-                              }`}>
-                                {record.status === 'present' ? 'มา' : record.status === 'late' ? 'สาย' : record.status}
-                              </span>
-                              <p className="text-[10px] text-gray-400 mt-0.5">
-                                {record.check_in_time?.split('T')[1]?.slice(0, 5) || ''}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setShowManualCaptureModal(true)}
+                      disabled={currentSession.session_type !== 'motion_detection'}
+                      className="apple-button-secondary bg-white py-2.5 text-sm disabled:opacity-50"
+                    >
+                      📸 Manual Capture
+                    </button>
+                    <button
+                      onClick={() => openAttendanceLogModal()}
+                      className="apple-button-secondary bg-white py-2.5 text-sm"
+                    >
+                      📋 บันทึกการเช็คชื่อ
+                    </button>
+                    {/* <button
+                      onClick={() => setShowSessionDetailsModal(currentSession)}
+                      className="apple-button-secondary bg-white py-2.5 text-sm"
+                    >
+                      📊 รายละเอียด
+                    </button> */}
+                    <button
+                      onClick={() => endSession(currentSession.id)}
+                      disabled={actionLoading}
+                      className="apple-button-primary bg-red-600 hover:bg-red-700 py-2.5 text-sm"
+                    >
+                      🛑 จบคาบเรียน
+                    </button>
                   </div>
                 </div>
-
-
-
-                {/* หน้าปลอม */}
-                {spoofEvents.length > 0 && (
-                  <div className="glass-card overflow-hidden">
-                    <div className="p-4 border-b border-white/40 bg-red-50/30 flex justify-between items-center">
-                      <div className="flex items-center space-x-2">
-                        <span className="flex h-2.5 w-2.5 relative">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-                        </span>
-                        <h2 className="text-sm font-semibold text-gray-900">⚠️ หน้าปลอม</h2>
-                      </div>
-                      <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
-                        {spoofEvents.length} ครั้ง
-                      </span>
+                  
+                {motionStats && currentSession && (
+                  <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                      <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Motion Events</p>
+                      <p className="text-2xl font-semibold text-gray-900">{motionStats.motion_events || 0}</p>
                     </div>
-
-                    <div className="p-3 space-y-2 overflow-y-auto" style={{ maxHeight: '200px' }}>
-                      {spoofEvents.map((event, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
-                              🚨
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-900 text-xs">Unknown</p>
-                              <p className="text-[10px] text-gray-400">
-                                {event.timestamp.split('T')[1]?.slice(0, 5)} · {event.spoof_count} ใบหน้า
-                              </p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => setSelectedSpoofImage(event)}
-                            className="text-[10px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-500 hover:text-white transition-all"
-                          >
-                            ดูภาพ
-                          </button>
-                        </div>
-                      ))}
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                      <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Snapshots</p>
+                      <p className="text-2xl font-semibold text-gray-900">{motionStats.snapshots_taken || 0}</p>
+                    </div>
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                      <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Efficiency</p>
+                      <p className="text-2xl font-semibold text-gray-900">
+                        {motionStats.snapshots_taken && motionStats.motion_events
+                          ? Math.round((motionStats.snapshots_taken / motionStats.motion_events) * 100)
+                          : 0}%
+                      </p>
+                    </div>
+                    <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                      <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Attendance</p>
+                      <p className="text-2xl font-semibold text-gray-900">{motionStats.attendance_records || 0}</p>
                     </div>
                   </div>
                 )}
+              </div>
+            )}
 
+            
+          {selectedSpoofImage && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+              <div
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                onClick={() => setSelectedSpoofImage(null)}
+              />
+              <div className="relative w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
+                
+                {/* Header */}
+                <div className="p-6 border-b border-red-100 bg-red-50/50 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">⚠️ ตรวจพบใบหน้าปลอม</h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedSpoofImage.timestamp.split('T')[1]?.slice(0, 5)}
+                      {' · '}พบ {selectedSpoofImage.spoof_count} ใบหน้า
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedSpoofImage(null)}
+                    className="w-8 h-8 rounded-full bg-white/50 flex items-center justify-center text-gray-500 hover:bg-white transition-all"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Image */}
+                <div className="p-6">
+                  <img
+                    src={`data:image/jpeg;base64,${selectedSpoofImage.image_b64}`}
+                    alt="spoof detected"
+                    className="w-full rounded-2xl object-contain max-h-[60vh] border border-red-200"
+                  />
+                </div>
+
+                {/* Footer */}
+                <div className="p-6 pt-0">
+                  <button
+                    onClick={() => setSelectedSpoofImage(null)}
+                    className="w-full apple-button-secondary py-3 text-sm"
+                  >
+                    ปิด
+                  </button>
+                </div>
               </div>
             </div>
           )}
+                      {/* Live Camera + Attendance Panel */}
+              {currentSession && (
+                <div className="flex gap-6 mb-10">
+                  
+                  {/* Left — Camera 70% */}
+                  <div className="w-[80%]">
+                    <div className="glass-card p-2 overflow-hidden h-full">
+                      <LiveVideoStream
+                        currentSession={currentSession}
+                        isSessionActive={currentSession !== null}
+                        onManualCapture={handleManualCaptureFromVideo}
+                        motionStats={motionStats}
+                        onSpoofDetected={handleSpoofDetected}
+                        onAttendanceDetected={() => {
+                          console.log('✨ Attendance detected, refreshing records...')
+                          fetchAttendanceRecords(currentSession.id)
+                          fetchSessionLogs(currentSession.id)
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right — Panel 30% */}
+                  <div className="w-[20%] flex flex-col gap-4">
+
+                    {/* นักเรียนที่เช็คชื่อแล้ว */}
+                    <div className="glass-card overflow-hidden flex-1">
+                      <div className="p-4 border-b border-white/40 bg-white/30 flex justify-between items-center">
+                        <div className="flex items-center space-x-2">
+                          <span className="flex h-2.5 w-2.5 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                          </span>
+                          <h2 className="text-sm font-semibold text-gray-900">นักเรียนที่เช็คชื่อแล้ว</h2>
+                        </div>
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                          {attendanceRecords.length} คน
+                        </span>
+                      </div>
+
+                      <div className="overflow-y-auto" style={{ maxHeight: '320px' }}>
+                        {attendanceRecords.length === 0 ? (
+                          <div className="text-center py-8 text-gray-400">
+                            <div className="text-3xl mb-2">👀</div>
+                            <p className="text-xs font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
+                          </div>
+                        ) : (
+                          <div className="p-3 space-y-2">
+                            {attendanceRecords.map((record, index) => (
+                              <div
+                                key={record.id || index}
+                                className="flex items-center space-x-3 p-3 bg-white/50 rounded-xl border border-white/60"
+                              >
+                                {/* Avatar */}
+                                <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-xs flex-shrink-0">
+                                  {record.users?.full_name?.charAt(0) || '?'}
+                                </div>
+
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-gray-900 text-xs truncate">
+                                    {record.users?.full_name || 'Unknown'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400">{record.users?.school_id || 'N/A'}</p>
+                                  {record.face_match_score != null && (
+                                    <div className="flex items-center space-x-1 mt-1">
+                                      <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            record.face_match_score >= 0.8 ? 'bg-green-500'
+                                            : record.face_match_score >= 0.6 ? 'bg-yellow-400'
+                                            : 'bg-red-400'
+                                          }`}
+                                          style={{ width: `${Math.round(record.face_match_score * 100)}%` }}
+                                        />
+                                      </div>
+                                      <span className={`text-[10px] font-bold ${
+                                        record.face_match_score >= 0.8 ? 'text-green-600'
+                                        : record.face_match_score >= 0.6 ? 'text-yellow-600'
+                                        : 'text-red-500'
+                                      }`}>
+                                        {Math.round(record.face_match_score * 100)}%
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Status + Time */}
+                                <div className="text-right flex-shrink-0">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                    record.status === 'present' ? 'bg-green-100 text-green-700'
+                                    : record.status === 'late' ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-gray-100 text-gray-500'
+                                  }`}>
+                                    {record.status === 'present' ? 'มา' : record.status === 'late' ? 'สาย' : record.status}
+                                  </span>
+                                  <p className="text-[10px] text-gray-400 mt-0.5">
+                                    {record.check_in_time?.split('T')[1]?.slice(0, 5) || ''}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
 
-        {/* Stats Cards & Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-          <div className="lg:col-span-1 glass-card p-8 flex flex-col justify-center items-center text-center">
-            <div className="w-20 h-20 bg-[#0071e3]/10 rounded-3xl flex items-center justify-center mb-4">
-              <svg className="w-10 h-10 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-            </div>
-            <p className="text-gray-500 font-semibold uppercase tracking-wider text-xs mb-1">คลาสที่สอนทั้งหมด</p>
-            <p className="text-5xl font-bold text-gray-900">{classes.length}</p>
-          </div>
 
-          <div className="lg:col-span-2 glass-card p-8">
-            <h3 className="text-xl font-semibold text-gray-900 mb-6">เมนูจัดการ</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="apple-button-primary flex items-center justify-center space-x-3 py-5"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span>สร้างคลาสใหม่</span>
-              </button>
-              
-              <button
-                onClick={() => setShowStartSessionModal(true)}
-                disabled={currentSession !== null}
-                className="apple-button-secondary bg-green-500/10 text-green-700 border-green-200 hover:bg-green-500 hover:text-white flex items-center justify-center space-x-3 py-5 disabled:opacity-50"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-                <span>เริ่มเช็คชื่อ</span>
-              </button>
-            </div>
-          </div>
-        </div>
+                    {/* หน้าปลอม */}
+                    {spoofEvents.length > 0 && (
+                      <div className="glass-card overflow-hidden">
+                        <div className="p-4 border-b border-white/40 bg-red-50/30 flex justify-between items-center">
+                          <div className="flex items-center space-x-2">
+                            <span className="flex h-2.5 w-2.5 relative">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                            </span>
+                            <h2 className="text-sm font-semibold text-gray-900">⚠️ หน้าปลอม</h2>
+                          </div>
+                          <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                            {spoofEvents.length} ครั้ง
+                          </span>
+                        </div>
 
-        {/* Classes Section */}
-        <div className="glass-card overflow-hidden">
-          <div className="p-8 border-b border-white/40 flex justify-between items-center bg-white/30">
-            <h2 className="text-2xl font-semibold tracking-tight text-gray-900">📚 คลาสเรียนของฉัน</h2>
-            {classes.length > 0 && (
-              <span className="bg-[#0071e3]/10 text-[#0071e3] px-3 py-1 rounded-full text-xs font-bold">
-                {classes.length} คลาส
-              </span>
-            )}
-          </div>
+                        <div className="p-3 space-y-2 overflow-y-auto" style={{ maxHeight: '200px' }}>
+                          {spoofEvents.map((event, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-sm flex-shrink-0">
+                                  🚨
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-gray-900 text-xs">Unknown</p>
+                                  <p className="text-[10px] text-gray-400">
+                                    {event.timestamp.split('T')[1]?.slice(0, 5)} · {event.spoof_count} ใบหน้า
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setSelectedSpoofImage(event)}
+                                className="text-[10px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-500 hover:text-white transition-all"
+                              >
+                                ดูภาพ
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-          <div className="p-8">
-            {classes.length === 0 ? (
-              <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
-                <div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
-                  <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  </div>
+                </div>
+              )}
+
+
+            {/* Stats Cards & Quick Actions */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+              <div className="lg:col-span-1 glass-card p-8 flex flex-col justify-center items-center text-center">
+                <div className="w-20 h-20 bg-[#0071e3]/10 rounded-3xl flex items-center justify-center mb-4">
+                  <svg className="w-10 h-10 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                 </div>
-                <p className="text-gray-500 font-medium mb-6">คุณยังไม่มีคลาสเรียนในขณะนี้</p>
-                <button onClick={() => setShowCreateModal(true)} className="apple-button-primary">สร้างคลาสแรกของคุณ</button>
+                <p className="text-gray-500 font-semibold uppercase tracking-wider text-xs mb-1">คลาสที่สอนทั้งหมด</p>
+                <p className="text-5xl font-bold text-gray-900">{classes.length}</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {classes.map((cls) => (
-                  <div 
-                    key={cls.class_id} 
-                    className="glass-morphism p-6 hover:shadow-lg hover:border-[#0071e3]/30 transition-all group cursor-pointer"
-                    onClick={() => handleClassClick(cls)}
+
+              <div className="lg:col-span-2 glass-card p-8">
+                <h3 className="text-xl font-semibold text-gray-900 mb-6">เมนูจัดการ</h3>
+                <div className="grid grid-cols-1 gap-4">
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="apple-button-primary flex items-center justify-center space-x-3 py-5"
                   >
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="bg-[#0071e3]/10 p-3 rounded-2xl group-hover:bg-[#0071e3] group-hover:text-white transition-colors">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                        </svg>
-                      </div>
-                      <div className="flex space-x-1">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setShowClassCodeModal({code: cls.class_code, name: cls.subject_name}) }}
-                          className="p-2 hover:bg-[#0071e3]/10 rounded-xl text-gray-400 hover:text-[#0071e3] transition-colors"
-                          title="แชร์รหัส"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                          </svg>
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); deleteClass(cls.class_id, cls.subject_name) }}
-                          className="p-2 hover:bg-red-50 rounded-xl text-gray-400 hover:text-red-600 transition-colors"
-                          title="ลบ"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</h3>
-                    <p className="text-gray-400 text-sm font-bold mb-4">{cls.class_code}</p>
-                    <div className="flex items-center text-[#0071e3] text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all">
-                      <span>เข้าจัดการคลาส</span>
-                      <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    <span>สร้างคลาสใหม่</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Classes Section */}
+            <div className="glass-card overflow-hidden">
+              <div className="p-8 border-b border-white/40 flex justify-between items-center bg-white/30">
+                <h2 className="text-2xl font-semibold tracking-tight text-gray-900">📚 คลาสเรียนของฉัน</h2>
+                {classes.length > 0 && (
+                  <span className="bg-[#0071e3]/10 text-[#0071e3] px-3 py-1 rounded-full text-xs font-bold">
+                    {classes.length} คลาส
+                  </span>
+                )}
+              </div>
+
+              <div className="p-8">
+                {classes.length === 0 ? (
+                  <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
+                    <div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                      <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                       </svg>
                     </div>
+                    <p className="text-gray-500 font-medium mb-6">คุณยังไม่มีคลาสเรียนในขณะนี้</p>
+                    <button onClick={() => setShowCreateModal(true)} className="apple-button-primary">สร้างคลาสแรกของคุณ</button>
                   </div>
-                ))}
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {classes.map((cls) => (
+                      <div 
+                        key={cls.class_id} 
+                        className="glass-morphism p-6 hover:shadow-lg hover:border-[#0071e3]/30 transition-all group cursor-pointer"
+                        onClick={() => handleClassClick(cls)}
+                      >
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="bg-[#0071e3]/10 p-3 rounded-2xl group-hover:bg-[#0071e3] group-hover:text-white transition-colors">
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                          </div>
+                          <div className="flex space-x-1">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setShowClassCodeModal({code: cls.class_code, name: cls.subject_name}) }}
+                              className="p-2 hover:bg-[#0071e3]/10 rounded-xl text-gray-400 hover:text-[#0071e3] transition-colors"
+                              title="แชร์รหัส"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                              </svg>
+                            </button>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); deleteClass(cls.class_id, cls.subject_name) }}
+                              className="p-2 hover:bg-red-50 rounded-xl text-gray-400 hover:text-red-600 transition-colors"
+                              title="ลบ"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</h3>
+                        <p className="text-gray-400 text-sm font-bold mb-4">{cls.class_code}</p>
+                        <div className="flex items-center text-[#0071e3] text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all">
+                          <span>เข้าจัดการคลาส</span>
+                          <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Modals */}
       {showCreateModal && (
@@ -1291,7 +1283,7 @@ const handleConfirmStartSession = async () => {
       {/* Header */}
       <div className="bg-[#0071e3] p-8 text-white text-center">
         <div className="text-3xl mb-2">⚙️</div>
-        <h3 className="text-2xl font-semibold tracking-tight">ตั้งค่าเซสชัน</h3>
+        <h3 className="text-2xl font-semibold tracking-tight">ตั้งค่าคาบเรียน</h3>
         <p className="text-white/70 text-sm mt-1">{selectedClassForSession.subject_name}</p>
       </div>
 
@@ -1326,7 +1318,7 @@ const handleConfirmStartSession = async () => {
         {/* On-time limit */}
         <div className="bg-gray-50/80 rounded-2xl p-5">
           <label className="block text-sm font-semibold text-gray-700 mb-1">
-            ⏰ เวลามาทัน (นาทีหลังเริ่มเซสชัน)
+            ⏰ เวลามาทัน (นาทีหลังเริ่มคาบเรียน)
           </label>
           <p className="text-xs text-gray-400 mb-3">
             นักเรียนที่เช็คชื่อหลังจากนี้จะถูกบันทึกว่า "สาย"
@@ -1377,11 +1369,11 @@ const handleConfirmStartSession = async () => {
           <button
             onClick={() => {
               setShowSessionConfigModal(false)
-              setShowStartSessionModal(true)
+              setSelectedClassForSession(null)
             }}
             className="flex-1 apple-button-secondary py-3 text-sm"
           >
-            ย้อนกลับ
+            ยกเลิก
           </button>
           <button
             onClick={handleConfirmStartSession}
@@ -1411,7 +1403,7 @@ const handleConfirmStartSession = async () => {
           <div className="max-w-4xl w-full glass-card max-h-[85vh] flex flex-col overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
             <div className="p-8 border-b border-white/40 flex justify-between items-center bg-white/30">
               <div>
-                <h3 className="text-2xl font-semibold tracking-tight text-gray-900">บันทึกเซสชัน</h3>
+                <h3 className="text-2xl font-semibold tracking-tight text-gray-900">บันทึกคาบเรียน</h3>
                 <p className="text-gray-500 text-sm font-medium">ติดตามกิจกรรมและการเช็คชื่อทั้งหมด</p>
               </div>
               <button
@@ -1455,7 +1447,7 @@ const handleConfirmStartSession = async () => {
                     </div>
                   ) : sessionLogs.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
-                      <p>ยังไม่มีบันทึกกิจกรรมในเซสชันนี้</p>
+                      <p>ยังไม่มีบันทึกกิจกรรมในคาบเรียนนี้</p>
                     </div>
                   ) : (
                     sessionLogs.map((log, idx) => (
@@ -1478,7 +1470,7 @@ const handleConfirmStartSession = async () => {
                 <div className="space-y-3">
                   {attendanceRecords.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
-                      <p>ยังไม่มีนักเรียนเช็คชื่อในเซสชันนี้</p>
+                      <p>ยังไม่มีนักเรียนเช็คชื่อในคาบเรียนนี้</p>
                     </div>
                   ) : (
                     attendanceRecords.map((record, idx) => (
