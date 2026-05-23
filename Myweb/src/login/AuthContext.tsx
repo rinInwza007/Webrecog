@@ -59,14 +59,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }
 
   useEffect(() => {
-    let mounted = true
-
     // Get initial session
     const initAuth = async () => {
+      setLoading(true)
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!mounted) return
-
         const authUser = session?.user ?? null
         setUser(authUser)
 
@@ -78,7 +75,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       } catch (error) {
         console.error('Error initializing auth:', error)
       } finally {
-        if (mounted) setLoading(false)
+        setLoading(false)
       }
     }
 
@@ -87,17 +84,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return
         console.log('Auth event:', event)
-        
         const authUser = session?.user ?? null
-        
-        // Only trigger updates if the user ID actually changed
-        // This avoids redundant re-renders on token refreshes
-        setUser(prevUser => {
-          if (prevUser?.id === authUser?.id) return prevUser
-          return authUser
-        })
+        setUser(authUser)
 
         if (authUser) {
           await fetchAppUser(authUser.id)
@@ -105,14 +94,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setAppUser(null)
         }
         
-        if (mounted) setLoading(false)
+        setLoading(false)
       }
     )
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const signUp = async (
