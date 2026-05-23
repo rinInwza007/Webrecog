@@ -878,7 +878,6 @@ def process_faces_with_advanced_matching(session_id: str, image_array: np.ndarra
             base_threshold = config.get('face_threshold', 0.6)
             
             for i, (encoding, location) in enumerate(zip(face_encodings, face_locations_real)): #วนลูปผ่านใบหน้าที่ตรวจจับได้และการเข้ารหัสที่สอดคล้องกัน
-                face_identification_start = time.time()
                 logger.info(f"🔍 Processing face {i+1}/{len(face_encodings)}")
                 
                 norm_encoding = FaceEmbeddingProcessor.normalize_embedding(encoding)
@@ -892,28 +891,21 @@ def process_faces_with_advanced_matching(session_id: str, image_array: np.ndarra
                     if not embedding_manager:
                         continue
                     
-                    fetch_start = time.time()
                     stored_embedding = embedding_manager.get_embedding_advanced(student_id)
-                    fetch_duration = time.time() - fetch_start
-
                     if stored_embedding is None:
                         continue
                     
-                    sim_calc_start = time.time()
                     if use_advanced_similarity:
                         similarity_metrics = SimilarityCalculator.calculate_advanced_similarity(norm_encoding, stored_embedding)
                     else:
                         simple_score = SimilarityCalculator.calculate_simple_similarity(norm_encoding, stored_embedding)
                         similarity_metrics = {'combined_score': simple_score, 'confidence_level': 'medium'}
-                    sim_calc_duration = time.time() - sim_calc_start
                     
                     similarity_results.append({
                         'student_id': student_id,
                         'similarity_score': similarity_metrics['combined_score'],
                         'confidence_level': similarity_metrics.get('confidence_level', 'medium'),
-                        'detailed_metrics': similarity_metrics,
-                        'fetch_time_ms': fetch_duration * 1000,
-                        'calc_time_ms': sim_calc_duration * 1000
+                        'detailed_metrics': similarity_metrics
                     })
                 
                 # Sort by similarity
@@ -940,9 +932,6 @@ def process_faces_with_advanced_matching(session_id: str, image_array: np.ndarra
                         confidence_level = top_result['confidence_level']
                         logger.info(f"✅ Face {i+1} recognized as {best_match}")
                 
-                identification_time = time.time() - face_identification_start
-                logger.info(f"⏱️ Identification time for face {i+1}: {identification_time:.4f}s (Total students checked: {len(similarity_results)})")
-                
                 face_info = {
                     'face_index': i,
                     'student_id': best_match,
@@ -959,7 +948,7 @@ def process_faces_with_advanced_matching(session_id: str, image_array: np.ndarra
                     },
                     'processing_method': 'advanced_similarity',
                     'motion_strength': motion_strength,
-                    'identification_time_s': identification_time
+                    'processing_time': time.time() - start_time
                 }
                 
                 detected_faces.append(face_info)

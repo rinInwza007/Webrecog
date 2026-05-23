@@ -10,7 +10,7 @@
 export type UserRole = 'student' | 'teacher' | 'admin'
 
 // --- Attendance ---
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'leave'
+export type AttendanceStatus = 'present' | 'late' | 'absent'
 export type SessionStatus    = 'active' | 'ended' | 'cancelled'
 export type SessionType      = 'standard' | 'motion_detection'
 export type DetectionMethod  = 'manual' | 'face_recognition' | 'motion_detection'
