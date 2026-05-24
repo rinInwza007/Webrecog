@@ -2,12 +2,26 @@ import { useState, useEffect, FC } from 'react'
 import { supabase } from './supabaseClient'
 import type { Class, AttendanceSession, AttendanceRecord } from '@/types'
 import Swal from 'sweetalert2'
+import LiveVideoStream from './LiveVideoStream'
 
 interface ClassDetailViewProps {
   classData: Class
   onBack: () => void
   currentSession: any | null
   onStartAttendance: (cls: Class) => void
+  onManualCapture: (imageBlob: Blob) => Promise<void>
+  motionStats: any
+  onSpoofDetected: (event: SpoofEvent) => void
+  attendanceRecords: any[]
+  spoofEvents: SpoofEvent[]
+  onShowSpoofImage: (event: SpoofEvent) => void
+  onEndSession: (sessionId: string) => Promise<void>
+}
+
+interface SpoofEvent {
+  image_b64: string
+  timestamp: string
+  spoof_count: number
 }
 
 interface AttendanceStats {
@@ -37,7 +51,19 @@ interface ClassAttendanceData {
   attendanceStats: AttendanceStats
 }
 
-const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack, currentSession, onStartAttendance }) => {
+const ClassDetailView: FC<ClassDetailViewProps> = ({ 
+  classData, 
+  onBack, 
+  currentSession, 
+  onStartAttendance,
+  onManualCapture,
+  motionStats,
+  onSpoofDetected,
+  attendanceRecords,
+  spoofEvents,
+  onShowSpoofImage,
+  onEndSession
+}) => {
   const [attendanceData, setAttendanceData] = useState<ClassAttendanceData>({
     sessions: [],
     totalSessions: 0,
@@ -540,6 +566,175 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({ classData, onBack, currentS
             </div>
           </div>
         </div>
+
+        {/* Current Session UI */}
+        {currentSession && currentSession.class_id === classData.class_id && (
+          <div className="space-y-6 mb-10">
+            {/* Session Info Block */}
+            <div className="glass-card bg-[#0071e3]/10 border-[#0071e3]/20 p-8 overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#0071e3]/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
+              <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <span className="flex h-3 w-3 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    <h3 className="text-sm font-bold text-[#0071e3] uppercase tracking-wider">คาบเรียนที่กำลังดำเนินการ</h3>
+                  </div>
+                  <h2 className="text-2xl font-semibold text-gray-900">{classData.subject_name}</h2>
+                </div>
+                
+                <div className="flex flex-wrap gap-4">
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-gray-400">🟢 เริ่ม:</span>
+                    <span className="font-semibold text-gray-700">
+                      {currentSession.start_time?.split('T')[1]?.slice(0, 5) || '-'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-gray-400">⚠️ สายหลัง:</span>
+                    <span className="font-semibold text-yellow-600">
+                      {currentSession.start_time && currentSession.on_time_limit_minutes
+                        ? new Date(new Date(currentSession.start_time).getTime() + currentSession.on_time_limit_minutes * 60000).toISOString().split('T')[1]?.slice(0, 5)
+                        : '-'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => onEndSession(currentSession.id)}
+                    className="apple-button-primary bg-red-600 hover:bg-red-700 py-2.5 text-sm"
+                  >
+                    🛑 จบคาบเรียน
+                  </button>
+                </div>
+              </div>
+
+              {motionStats && (
+                <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+                  <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Motion Events</p>
+                    <p className="text-2xl font-semibold text-gray-900">{motionStats.motion_events || 0}</p>
+                  </div>
+                  <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Snapshots</p>
+                    <p className="text-2xl font-semibold text-gray-900">{motionStats.snapshots_taken || 0}</p>
+                  </div>
+                  <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Efficiency</p>
+                    <p className="text-2xl font-semibold text-gray-900">
+                      {motionStats.snapshots_taken && motionStats.motion_events
+                        ? Math.round((motionStats.snapshots_taken / motionStats.motion_events) * 100)
+                        : 0}%
+                    </p>
+                  </div>
+                  <div className="bg-white/40 backdrop-blur-md rounded-2xl p-4 border border-white/60">
+                    <p className="text-gray-500 text-xs font-bold uppercase tracking-tight mb-1">Attendance</p>
+                    <p className="text-2xl font-semibold text-gray-900">{motionStats.attendance_records || 0}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Live Camera + Attendance Panel */}
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* Left — Camera */}
+              <div className="lg:w-[70%]">
+                <div className="glass-card p-2 overflow-hidden h-full">
+                  <LiveVideoStream
+                    currentSession={currentSession}
+                    isSessionActive={true}
+                    onManualCapture={onManualCapture}
+                    motionStats={motionStats}
+                    onSpoofDetected={onSpoofDetected}
+                    onAttendanceDetected={() => {
+                      console.log('✨ Attendance detected, refreshing records...')
+                      fetchClassAttendanceData(true)
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Right — Active Session Panels */}
+              <div className="lg:w-[30%] flex flex-col gap-6">
+                {/* Checked-in Students Panel */}
+                <div className="glass-card overflow-hidden flex-1 flex flex-col">
+                  <div className="p-4 border-b border-white/40 bg-white/30 flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                      <span className="flex h-2.5 w-2.5 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                      </span>
+                      <h2 className="text-sm font-semibold text-gray-900">เช็คชื่อแล้ว</h2>
+                    </div>
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">
+                      {attendanceRecords.length} คน
+                    </span>
+                  </div>
+
+                  <div className="overflow-y-auto flex-1" style={{ maxHeight: '300px' }}>
+                    {attendanceRecords.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <p className="text-xs font-medium">ยังไม่มีนักเรียนเช็คชื่อ</p>
+                      </div>
+                    ) : (
+                      <div className="p-3 space-y-2">
+                        {attendanceRecords.map((record, index) => (
+                          <div key={record.id || index} className="flex items-center space-x-3 p-3 bg-white/50 rounded-xl border border-white/60">
+                            <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-xs flex-shrink-0">
+                              {record.users?.full_name?.charAt(0) || '?'}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-xs truncate">{record.users?.full_name || 'Unknown'}</p>
+                              <div className="flex items-center space-x-1 mt-0.5">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  record.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {record.status === 'present' ? 'มา' : 'สาย'}
+                                </span>
+                                <span className="text-[9px] text-gray-400">{record.check_in_time?.split('T')[1]?.slice(0, 5)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Spoof Events Panel */}
+                {spoofEvents.length > 0 && (
+                  <div className="glass-card overflow-hidden">
+                    <div className="p-4 border-b border-white/40 bg-red-50/30 flex justify-between items-center">
+                      <div className="flex items-center space-x-2">
+                        <span className="flex h-2.5 w-2.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                        <h2 className="text-sm font-semibold text-gray-900">⚠️ หน้าปลอม</h2>
+                      </div>
+                    </div>
+                    <div className="p-3 space-y-2 overflow-y-auto" style={{ maxHeight: '200px' }}>
+                      {spoofEvents.map((event, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl border border-red-100">
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900 text-xs">ตรวจพบหน้าปลอม</p>
+                            <p className="text-[10px] text-gray-400">{event.timestamp.split('T')[1]?.slice(0, 5)} · {event.spoof_count} ใบหน้า</p>
+                          </div>
+                          <button
+                            onClick={() => onShowSpoofImage(event)}
+                            className="text-[10px] px-2 py-1 rounded-lg border border-red-200 text-red-600 hover:bg-red-500 hover:text-white transition-all"
+                          >
+                            ดูภาพ
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">

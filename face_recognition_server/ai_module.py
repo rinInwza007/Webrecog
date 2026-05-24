@@ -258,7 +258,7 @@ class FaceEmbeddingProcessor:
             return embedding
     
     @staticmethod
-    def detect_faces_in_image(image_array: np.ndarray, model: str = "auto", motion_strength: float = 0.5) -> List[Tuple]: # ฟังก์ชันตรวจจับใบหน้า
+    def detect_faces_in_image(image_array: np.ndarray, model: str , motion_strength: float = 0.5) -> List[Tuple]: # ฟังก์ชันตรวจจับใบหน้า
         """
         Detect faces in image with dynamic model selection
         model: "hog" (fast), "cnn" (accurate), or "auto" (dynamic)
@@ -269,10 +269,10 @@ class FaceEmbeddingProcessor:
                 return [] ,image_array
             
             # Dynamic model selection
-            if model == "auto":
-                # High motion -> use fast HOG; Low motion -> use accurate CNN
-                model = "cnn" if motion_strength < 0.6 else "hog"
-                logger.debug(f"🔄 Dynamic model switch: motion={motion_strength:.2f} → {model}")
+            # if model == "auto":
+            #     # High motion -> use fast HOG; Low motion -> use accurate CNN
+            #     model = "cnn" if motion_strength < 0.6 else "hog"
+            #     logger.debug(f"🔄 Dynamic model switch: motion={motion_strength:.2f} → {model}")
             print(f"ขนาดภาพต้นฉบับกำลังเข้าฟังชัน detect_faces_in_image : {image_array.shape}")
             # Optimize image if too large
             height, width = image_array.shape[:2]

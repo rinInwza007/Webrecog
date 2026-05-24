@@ -92,12 +92,12 @@ class StartStreamRequest(BaseModel):
     class_id: str
     teacher_email: str
     on_time_limit_minutes: int = 15
-    duration_hours: int = 2
+    duration_hours: float  = 2
 
 class MotionSessionRequest(BaseModel):
     class_id: str
     teacher_email: str
-    duration_hours: int = 2
+    duration_hours: float = 2
     motion_threshold: float = 0.1
     cooldown_seconds: int = 30
     on_time_limit_minutes: int = 30
@@ -185,7 +185,7 @@ async def root():
 async def start_motion_detection(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
-    duration_hours: int = Form(2),
+    duration_hours: float = Form(2.0),
     motion_threshold: float = Form(0.1),
     cooldown_seconds: int = Form(30),
     on_time_limit_minutes: int = Form(30)
@@ -429,7 +429,7 @@ def _process_single_enrollment_image(image_bytes: bytes, index: int, min_quality
         # 🚀 Optimization 1: Use HOG first (much faster on CPU), fallback to CNN if needed
         face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
         if not face_locations:
-            face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="cnn")
+            face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
         
         if not face_locations:
             return {'index': index, 'status': 'no_face'}
@@ -799,7 +799,7 @@ async def start_realtime_stream(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
     on_time_limit_minutes: int = Form(15),
-    duration_hours: int = Form(2)
+    duration_hours: float  = Form(2)
 ):
     """Alias for start_motion_session to match TypeScript interface"""
     return await start_motion_session(
@@ -845,7 +845,7 @@ async def start_motion_session(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
     on_time_limit_minutes: int = Form(15),
-    duration_hours: int = Form(3)
+    duration_hours: float  = Form(3)    
 ):
     """Start a motion detection session"""
     try:
