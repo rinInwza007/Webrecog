@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import uuid
 import asyncio
 from datetime import timezone
+from concurrent.futures import ThreadPoolExecutor
 
 # Import from layers
 from state_module import supabase_manager, cache_manager, embedding_index_manager
@@ -91,12 +92,12 @@ class StartStreamRequest(BaseModel):
     class_id: str
     teacher_email: str
     on_time_limit_minutes: int = 15
-    duration_hours: int = 2
+    duration_hours: float  = 2
 
 class MotionSessionRequest(BaseModel):
     class_id: str
     teacher_email: str
-    duration_hours: int = 2
+    duration_hours: float = 2
     motion_threshold: float = 0.1
     cooldown_seconds: int = 30
     on_time_limit_minutes: int = 30
@@ -184,7 +185,7 @@ async def root():
 async def start_motion_detection(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
-    duration_hours: int = Form(2),
+    duration_hours: float = Form(2.0),
     motion_threshold: float = Form(0.1),
     cooldown_seconds: int = Form(30),
     on_time_limit_minutes: int = Form(30)
@@ -416,6 +417,66 @@ async def manual_capture_motion(
         logger.error(f"Error in manual capture: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def _process_single_enrollment_image(image_bytes: bytes, index: int, min_quality_threshold: float):
+    """Synchronous helper for image processing in enrollment"""
+    try:
+        image_pil = Image.open(io.BytesIO(image_bytes))
+        if image_pil.mode != 'RGB':
+            image_pil = image_pil.convert('RGB')
+        
+        image_array = np.array(image_pil)
+        
+        # 🚀 Optimization 1: Use HOG first (much faster on CPU), fallback to CNN if needed
+        face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
+        if not face_locations:
+            face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
+        
+        if not face_locations:
+            return {'index': index, 'status': 'no_face'}
+        
+        if len(face_locations) > 1:
+            face_locations = sorted(face_locations, 
+                                  key=lambda loc: (loc[2]-loc[0])*(loc[1]-loc[3]), 
+                                  reverse=True)
+        
+        # 🚀 Optimization 2: num_jitters=1 (standard speed) instead of 3
+        encodings = FaceEmbeddingProcessor.extract_face_encodings(
+            image_array, face_locations[:1], num_jitters=1
+        )
+        
+        if not encodings:
+            return {'index': index, 'status': 'no_encoding'}
+        
+        raw_encoding = encodings[0]
+        norm_encoding = FaceEmbeddingProcessor.normalize_embedding(raw_encoding)
+        
+        if norm_encoding is None:
+            return {'index': index, 'status': 'normalization_failed'}
+        
+        # Calculate quality
+        quality_info = FaceEmbeddingProcessor.calculate_face_quality(image_array, face_locations[0])
+        quality_score = quality_info['overall_score']
+        
+        if quality_score >= min_quality_threshold:
+            return {
+                'index': index,
+                'status': 'success',
+                'encoding': norm_encoding,
+                'quality_score': quality_score,
+                'quality_details': quality_info
+            }
+        else:
+            return {
+                'index': index,
+                'status': 'low_quality',
+                'quality_score': quality_score,
+                'threshold': min_quality_threshold
+            }
+                
+    except Exception as e:
+        logger.error(f"Error processing image {index}: {e}")
+        return {'index': index, 'status': 'error', 'reason': str(e)}
+
 @app.post("/api/face/enroll-advanced")
 async def enroll_face_advanced(
     images: List[UploadFile] = File(...),
@@ -424,7 +485,7 @@ async def enroll_face_advanced(
     enrollment_method: str = Form('weighted_centroid'),
     min_quality_threshold: float = Form(0.3)
 ):
-    """Advanced face enrollment with multiple image processing"""
+    """Advanced face enrollment with Parallel Image Processing"""
     try:
         if not images or len(images) == 0:
             raise HTTPException(status_code=400, detail="At least one image required")
@@ -432,80 +493,48 @@ async def enroll_face_advanced(
         if len(images) > 10:
             raise HTTPException(status_code=400, detail="Maximum 10 images allowed")
         
-        logger.info(f"🎯 Advanced enrollment for {student_id} ({len(images)} images, method: {enrollment_method})")
+        logger.info(f"⚡ Parallel enrollment for {student_id} ({len(images)} images, method: {enrollment_method})")
         
         embedding_manager = AdvancedFaceEmbeddingManager(supabase_manager, cache_manager)
+        
+        # 1. Read all image data asynchronously first
+        image_data_list = []
+        for img_file in images:
+            content = await img_file.read()
+            image_data_list.append(content)
+            
+        # 2. Process images in parallel using ThreadPoolExecutor
         all_encodings = []
         quality_scores = []
         image_analysis = []
         
-        for idx, image_file in enumerate(images):
-            try:
-                image_data = await image_file.read()
-                image = Image.open(io.BytesIO(image_data))
-                
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-                
-                image_array = np.array(image)
-                
-                # Detect faces
-                face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="cnn")
-                
-                if not face_locations:
-                    image_analysis.append({'index': idx+1, 'status': 'no_face'})
-                    continue
-                
-                if len(face_locations) > 1:
-                    face_locations = sorted(face_locations, 
-                                          key=lambda loc: (loc[2]-loc[0])*(loc[1]-loc[3]), 
-                                          reverse=True)
-                
-                # Extract encodings with high quality
-                encodings = FaceEmbeddingProcessor.extract_face_encodings(
-                    image_array, face_locations[:1], num_jitters=3
+        # Max workers set to image count to maximize CPU usage
+        with ThreadPoolExecutor(max_workers=len(images)) as executor:
+            loop = asyncio.get_event_loop()
+            tasks = [
+                loop.run_in_executor(
+                    executor, 
+                    _process_single_enrollment_image, 
+                    img_data, 
+                    i + 1, 
+                    min_quality_threshold
                 )
-                
-                if not encodings:
-                    image_analysis.append({'index': idx+1, 'status': 'no_encoding'})
-                    continue
-                
-                raw_encoding = encodings[0]
-                norm_encoding = FaceEmbeddingProcessor.normalize_embedding(raw_encoding)
-                
-                if norm_encoding is None:
-                    image_analysis.append({'index': idx+1, 'status': 'normalization_failed'})
-                    continue
-                
-                # Calculate quality
-                quality_info = FaceEmbeddingProcessor.calculate_face_quality(image_array, face_locations[0])
-                quality_score = quality_info['overall_score']
-                
-                if quality_score >= min_quality_threshold:
-                    all_encodings.append(norm_encoding)
-                    quality_scores.append(quality_score)
-                    image_analysis.append({
-                        'index': idx+1,
-                        'status': 'success',
-                        'quality_score': quality_score,
-                        'quality_details': quality_info
-                    })
-                    logger.info(f"✅ Image {idx+1} enrolled (quality: {quality_score:.3f})")
-                else:
-                    image_analysis.append({
-                        'index': idx+1,
-                        'status': 'low_quality',
-                        'quality_score': quality_score,
-                        'threshold': min_quality_threshold
-                    })
-                
-            except Exception as e:
-                logger.error(f"Error processing image {idx+1}: {e}")
-                image_analysis.append({'index': idx+1, 'status': 'error', 'reason': str(e)})
-                continue
+                for i, img_data in enumerate(image_data_list)
+            ]
+            results = await asyncio.gather(*tasks)
+            
+        # 3. Collect and sort results
+        for result in results:
+            if result['status'] == 'success':
+                all_encodings.append(result['encoding'])
+                quality_scores.append(result['quality_score'])
+            
+            # Prepare metadata for response
+            analysis_entry = {k: v for k, v in result.items() if k != 'encoding'}
+            image_analysis.append(analysis_entry)
         
         if not all_encodings:
-            raise HTTPException(status_code=400, detail="No valid face encodings generated")
+            raise HTTPException(status_code=400, detail="No valid face encodings generated from any provided images")
         
         # Save embeddings
         success = embedding_manager.save_multiple_embeddings(
@@ -516,7 +545,7 @@ async def enroll_face_advanced(
         )
         
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to save embeddings")
+            raise HTTPException(status_code=500, detail="Failed to save embeddings to database")
         
         # Clear cache
         cache_manager.invalidate_student_cache(student_id)
@@ -524,7 +553,7 @@ async def enroll_face_advanced(
         success_count = len(all_encodings)
         avg_quality = float(np.mean(quality_scores))
         
-        logger.info(f"✅ Advanced enrollment complete: {success_count} images, avg quality: {avg_quality:.3f}")
+        logger.info(f"✅ Parallel enrollment complete: {success_count} images, avg quality: {avg_quality:.3f}")
         
         return {
             "success": True,
@@ -538,14 +567,14 @@ async def enroll_face_advanced(
                 "min_quality": float(min(quality_scores)) if quality_scores else 0,
                 "max_quality": float(max(quality_scores)) if quality_scores else 0
             },
-            "image_analysis": image_analysis,
+            "image_analysis": sorted(image_analysis, key=lambda x: x['index']),
             "timestamp": datetime.now().isoformat()
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Advanced enrollment error: {e}")
+        logger.error(f"Parallel enrollment error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/debug/test-advanced-recognition")
@@ -770,7 +799,7 @@ async def start_realtime_stream(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
     on_time_limit_minutes: int = Form(15),
-    duration_hours: int = Form(2)
+    duration_hours: float  = Form(2)
 ):
     """Alias for start_motion_session to match TypeScript interface"""
     return await start_motion_session(
@@ -816,7 +845,7 @@ async def start_motion_session(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
     on_time_limit_minutes: int = Form(15),
-    duration_hours: int = Form(3)
+    duration_hours: float  = Form(3)    
 ):
     """Start a motion detection session"""
     try:
