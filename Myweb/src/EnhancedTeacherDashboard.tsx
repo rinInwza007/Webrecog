@@ -21,7 +21,10 @@ const EnhancedTeacherDashboard: FC = () => {
   const [selectedSpoofImage, setSelectedSpoofImage] = useState<SpoofEvent | null>(null)
 
   const handleSpoofDetected = (event: SpoofEvent) => {
+    console.log('showClassDetail:', showClassDetail)
+  console.log('🚨 Spoof detected:', event)
   setSpoofEvents(prev => [event, ...prev]) // ใหม่สุดขึ้นก่อน
+   console.log('spoofEvents after:', spoofEvents)
   }
 
   const { user, signOut } = useAuth()
@@ -967,7 +970,7 @@ const handleConfirmStartSession = async () => {
             <span>0.5 ชม.</span><span>6 ชม.</span>
           </div>
         </div>
-
+              
         {/* On-time limit */}
         <div className="bg-gray-50/80 rounded-2xl p-5">
           <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -1165,7 +1168,51 @@ const handleConfirmStartSession = async () => {
           </div>
         </div>
       )}
+      {selectedSpoofImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div 
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm" 
+            onClick={() => setSelectedSpoofImage(null)}
+          />
+          <div className="relative z-10 w-full max-w-xl bg-white rounded-3xl overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+            
+            {/* Image */}
+            <div className="relative">
+              <img 
+                src={`data:image/jpeg;base64,${selectedSpoofImage.image_b64}`}
+                alt="Spoof Detection"
+                className="w-full object-cover"
+              />
+              <button 
+                onClick={() => setSelectedSpoofImage(null)}
+                className="absolute top-4 right-4 bg-black/30 hover:bg-black/50 backdrop-blur-sm p-2 rounded-full transition-all"
+              >
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
+            {/* Info */}
+            <div className="px-6 py-5 flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                พบใบหน้าปลอม <span className="font-semibold text-gray-900">{selectedSpoofImage.spoof_count} คน</span>
+                {' · เวลา '}
+                {new Date(selectedSpoofImage.timestamp).toLocaleTimeString('th-TH', {
+                  hour: '2-digit', minute: '2-digit', second: '2-digit'
+                })}
+              </p>
+              <button
+                onClick={() => setSelectedSpoofImage(null)}
+                className="text-sm text-gray-400 hover:text-gray-700 font-medium transition-colors"
+              >
+                ปิด
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
       {/* Manual Capture Modal */}
       {showManualCaptureModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">

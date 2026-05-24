@@ -514,14 +514,21 @@ class MotionProcessingService:
             spoof_timestamp = result_matching.get('spoof_timestamp')
             spoof_image_b64 = result_matching.get('spoof_image_b64')
 
-            new_records = 0
+            new_records = 0 # นับจำนวน attendance ที่ถูกบันทึกใหม่ในรอบนี้ 
+            already_checked = 0 #
+            unrecognized = 0 #
             for face_info in detected_faces:
+                if not face_info.get('verified'):
+                    unrecognized += 1
+                    continue
                 success = await self.attendance_service.record_attendance_from_face( # ส่งข้อมูลใบหน้าที่ตรวจจับได้ไปยัง AttendanceRecordingService เพื่อบันทึก attendance
                     face_info, session_id, session_data, item['capture_time'],
                     motion_strength, phase
                 )
                 if success:
                     new_records += 1
+                else:
+                    already_checked += 1
             if new_records > 0:
                 with motion_session_manager.lock:
                     if session_id in motion_session_manager.sessions:
@@ -558,8 +565,10 @@ class MotionProcessingService:
             return {
                 'success': True,
                 'new_records': new_records,
+                'already_checked': already_checked,
                 'faces_detected': len(detected_faces),
                 'processing_time': processing_time,
+                'unrecognized': unrecognized,
 
                 # Spoof detection results
                 'spoof_detected': spoof_count > 0,

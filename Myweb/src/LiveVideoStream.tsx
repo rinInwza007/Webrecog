@@ -38,6 +38,13 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
   onSpoofDetected,
   onAttendanceDetected
 }) => {
+  type CaptureStatus = 'idle' | 'sending' | 'success' | 'failed'
+
+  const [captureStatus, setCaptureStatus] = useState<CaptureStatus>('idle')
+  const [statusMessage, setStatusMessage] = useState<string>('')
+  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -285,6 +292,8 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
   }
 
   const sendFrameForMotionDetection = async (motionStrength = 0.5) => {
+    
+
     if (!videoRef.current || !canvasRef.current || !currentSession) return
 
     try {
@@ -307,6 +316,10 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
           formData.append('elapsed_minutes', Math.floor((Date.now() - new Date(currentSession.start_time).getTime()) / 60000).toString())
           formData.append('device_id', 'webcam_live_stream')
 
+              // ========== เพิ่ม: ก่อนส่ง ==========
+          setCaptureStatus('sending')
+          setStatusMessage('กำลังส่งภาพประมวลผล...')
+
           try {
             const response = await fetch(`${FASTAPI_URL}/api/motion/snapshot`, {
               method: 'POST',
@@ -316,6 +329,23 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
             if (response.ok) {
               const result = await response.json()
               console.log('📸 Motion frame sent successfully:', result.message)
+
+              if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current)
+
+              const checked = (result.new_records ?? 0) + (result.already_checked ?? 0)
+              
+
+              if (checked > 0) {
+                setCaptureStatus('success')
+                setStatusMessage(`พบ ${result.faces_detected ?? 0} คน · เช็ค ${result.new_records ?? 0} · เช็คซ้ำ ${result.already_checked ?? 0}`)
+              } else {
+                setCaptureStatus('failed')
+                setStatusMessage(`พบ ${result.faces_detected ?? 0} คน · เช็คไม่ได้ ${result.unrecognized ?? 0} คน`)
+              }
+              statusTimeoutRef.current = setTimeout(() => {
+                setCaptureStatus('idle')
+                setStatusMessage('')
+              }, 3000)
               
               // If backend indicates a new attendance or successful processing, notify parent
               if (result.success || result.attendance_detected) {
@@ -444,7 +474,27 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
           muted
           className="w-full h-full object-cover"
         />
-        
+                {/* ========== เพิ่ม: กรอบเปลี่ยนสี ========== */}
+        <div className={`absolute inset-0 border-4 rounded-3xl pointer-events-none transition-all duration-300 ${
+          captureStatus === 'sending' ? 'border-gray-400' :
+          captureStatus === 'success' ? 'border-green-400' :
+          captureStatus === 'failed'  ? 'border-yellow-400' :
+          'border-transparent'
+        }`} />
+
+        {/* ========== เพิ่ม: แถบสถานะข้างล่าง ========== */}
+        {statusMessage && (
+          <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+            <span className={`px-4 py-1.5 rounded-full text-sm font-medium backdrop-blur-md border transition-all ${
+              captureStatus === 'sending' ? 'bg-gray-500/80 text-white border-gray-400' :
+              captureStatus === 'success' ? 'bg-green-500/80 text-white border-green-400' :
+              captureStatus === 'failed'  ? 'bg-yellow-500/80 text-white border-yellow-400' :
+              ''
+            }`}>
+              {statusMessage}
+            </span>
+          </div>
+        )}
         {isStreaming && (
           <div className="absolute top-6 left-6 space-y-2">
             <div className="bg-black/40 backdrop-blur-md text-white px-4 py-3 rounded-2xl text-xs border border-white/10 shadow-lg">
