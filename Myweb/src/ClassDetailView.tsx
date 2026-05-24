@@ -27,6 +27,7 @@ interface SpoofEvent {
 interface AttendanceStats {
   present: number
   late: number
+  leave: number
   absent: number
 }
 
@@ -76,7 +77,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
     attendanceStats: {
       present: 0,
       late: 0,
-      absent: 0
+      absent: 0,
+      leave: 0,
     }
   })
   const [loading, setLoading] = useState(true)
@@ -189,7 +191,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
       const attendanceStats = {
         present: allAttendanceRecords.filter(r => r.status === 'present').length,
         late: allAttendanceRecords.filter(r => r.status === 'late').length,
-        absent: 0
+        leave: allAttendanceRecords.filter(r => r.status === 'leave').length,
+        absent: Math.max(0, (totalStudents * totalSessions) - allAttendanceRecords.length)
       }
 
       let totalAttendanceRate = 0
@@ -312,83 +315,20 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
     const sessionRecords = attendanceData.recentAttendance.filter(r => r.session_id === sessionId)
     const present = sessionRecords.filter(r => r.status === 'present').length
     const late = sessionRecords.filter(r => r.status === 'late').length
-    const absent = attendanceData.totalStudents - sessionRecords.length
+    const leave = sessionRecords.filter(r => r.status === 'leave').length
+    const absent = Math.max(0, attendanceData.totalStudents - (present + late + leave))
 
-    return { present, late, absent, total: sessionRecords.length }
+    return { present, late, leave, absent, total: attendanceData.totalStudents }
   }
 
-  const getStudentAttendanceHistory = (studentId: string) => {
-    return attendanceData.recentAttendance
-      .filter(r => r.student_id === studentId)
-      .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
-  }
-
-  const getFilteredAttendanceRecords = () => {
-    let filtered = [...attendanceData.recentAttendance]
-
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(record => record.status === statusFilter)
-    }
-
-    if (dateFilter !== 'all') {
-      const now = new Date()
-      const filterDate = new Date()
-      
-      if (dateFilter === 'week') {
-        filterDate.setDate(now.getDate() - 7)
-      } else if (dateFilter === 'month') {
-        filterDate.setMonth(now.getMonth() - 1)
+  const getLatest5SessionsStats = () => {
+    return attendanceData.sessions.slice(0, 5).map(session => {
+      const stats = getAttendanceStatsForSession(session.id)
+      return {
+        date: new Date(session.start_time).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }),
+        ...stats
       }
-      
-      filtered = filtered.filter(record => 
-        new Date(record.check_in_time) >= filterDate
-      )
-    }
-
-    if (studentFilter) {
-      filtered = filtered.filter(record => {
-        const student = attendanceData.enrolledStudents.find(s => s.student_id === record.student_id)
-        return student?.name.toLowerCase().includes(studentFilter.toLowerCase()) ||
-               record.student_id.toLowerCase().includes(studentFilter.toLowerCase())
-      })
-    }
-
-    return filtered
-  }
-
-  const getPaginatedRecords = () => {
-    const filtered = getFilteredAttendanceRecords()
-    const startIndex = (currentPage - 1) * itemsPerPage
-    const endIndex = startIndex + itemsPerPage
-    return filtered.slice(startIndex, endIndex)
-  }
-
-  const getTotalPages = () => {
-    return Math.ceil(getFilteredAttendanceRecords().length / itemsPerPage)
-  }
-
-  const getAttendanceTrend = () => {
-    const last7Days: Record<string, number> = {}
-    const now = new Date()
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date(now)
-      date.setDate(date.getDate() - i)
-      const dateStr = date.toDateString()
-      last7Days[dateStr] = 0
-    }
-
-    attendanceData.recentAttendance.forEach(record => {
-      const dateStr = new Date(record.check_in_time).toDateString()
-      if (Object.prototype.hasOwnProperty.call(last7Days, dateStr)) {
-        last7Days[dateStr]++
-      }
-    })
-
-    return Object.entries(last7Days).map(([date, count]) => ({
-      date: new Date(date).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' }),
-      count
-    }))
+    }).reverse()
   }
 
   const [showExportModal, setShowExportModal] = useState(false)
@@ -779,7 +719,6 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
               {[
                 {id: 'overview', label: 'ภาพรวม'}, 
                 {id: 'students', label: 'นักเรียน'}, 
-                {id: 'attendance', label: 'บันทึกการเช็คชื่อ'}, 
                 {id: 'analytics', label: 'วิเคราะห์'},
                 {id: 'sessions', label: 'คาบเรียน'}
               ].map(tab => (
@@ -836,7 +775,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                                </div>
                              </div>
                            </div>
-                           <p className="text-sm text-gray-500">ติดตามสถานะการเช็คชื่อล่าสุดของคุณได้ที่นี่ หรือดูรายละเอียดเพิ่มเติมในแท็บ "บันทึกการเช็คชื่อ"</p>
+                           <p className="text-sm text-gray-500">ติดตามสถานะการเช็คชื่อล่าสุดของคุณได้ที่นี่</p>
                          </div>
                        ) : (
                          <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
@@ -850,31 +789,38 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                        )}
                     </div>
                     <div className="glass-morphism p-8">
-                       <h3 className="text-lg font-semibold mb-6 text-gray-900">สถานะการเช็คชื่อ (ทั้งหมด)</h3>
-                       <div className="flex items-center justify-around h-40">
-                          <div className="text-center group">
-                            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                              <p className="text-3xl font-bold text-green-500">{attendanceData.attendanceStats.present}</p>
-                            </div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาเรียน</p>
-                          </div>
-                          <div className="text-center group">
-                            <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                              <p className="text-3xl font-bold text-yellow-500">{attendanceData.attendanceStats.late}</p>
-                            </div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาสาย</p>
-                          </div>
-                          <div className="text-center group">
-                            <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                              <p className="text-3xl font-bold text-red-500">
-                                {attendanceData.totalSessions > 0 
-                                  ? (attendanceData.totalStudents * attendanceData.totalSessions) - (attendanceData.attendanceStats.present + attendanceData.attendanceStats.late)
-                                  : 0}
-                              </p>
-                            </div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">ขาดเรียน</p>
-                          </div>
-                       </div>
+                       <h3 className="text-lg font-semibold mb-6 text-gray-900">สถานะการเช็คชื่อ (คาบเรียนล่าสุด)</h3>
+                       {attendanceData.sessions.length > 0 ? (
+                         <div className="flex items-center justify-around h-40">
+                            {(() => {
+                              const stats = getAttendanceStatsForSession(attendanceData.sessions[0].id)
+                              return (
+                                <>
+                                  <div className="text-center group">
+                                    <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-green-100">
+                                      <p className="text-3xl font-bold text-green-500">{stats.present}</p>
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาเรียน</p>
+                                  </div>
+                                  <div className="text-center group">
+                                    <div className="w-20 h-20 bg-yellow-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-yellow-100">
+                                      <p className="text-3xl font-bold text-yellow-500">{stats.late}</p>
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">มาสาย</p>
+                                  </div>
+                                  <div className="text-center group">
+                                    <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform border border-red-100">
+                                      <p className="text-3xl font-bold text-red-500">{stats.absent + stats.leave}</p>
+                                    </div>
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">ขาด/ลา</p>
+                                  </div>
+                                </>
+                              )
+                            })()}
+                         </div>
+                       ) : (
+                         <div className="flex items-center justify-center h-40 text-gray-400 italic">ไม่มีข้อมูลคาบเรียน</div>
+                       )}
                     </div>
                  </div>
               </div>
@@ -947,9 +893,11 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                 {lastRecord ? (
                                   <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${
-                                    lastRecord.status === 'present' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
+                                    lastRecord.status === 'present' ? 'bg-green-100 text-green-600' : 
+                                    lastRecord.status === 'late' ? 'bg-yellow-100 text-yellow-600' : 'bg-blue-100 text-blue-600'
                                   }`}>
-                                    {lastRecord.status === 'present' ? 'มาเรียน' : 'มาสาย'}
+                                    {lastRecord.status === 'present' ? 'มาเรียน' : 
+                                     lastRecord.status === 'late' ? 'มาสาย' : 'ลา'}
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold text-gray-300 uppercase">ไม่มีข้อมูล</span>
@@ -964,94 +912,6 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
               </div>
             )}
             
-            {selectedTab === 'attendance' && (
-              <div className="space-y-6 animate-in fade-in duration-500">
-                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-                    <h2 className="text-2xl font-semibold tracking-tight">บันทึกการเช็คชื่อ</h2>
-                    <div className="flex flex-wrap gap-2">
-                       <input 
-                         type="text"
-                         placeholder="ค้นหานักเรียน..."
-                         className="apple-input py-2 text-sm"
-                         value={studentFilter}
-                         onChange={(e) => setStudentFilter(e.target.value)}
-                       />
-                       <select 
-                         className="apple-input py-2 text-sm appearance-none pr-8 bg-no-repeat bg-[right_0.5rem_center]"
-                         value={statusFilter}
-                         onChange={(e) => setStatusFilter(e.target.value)}
-                       >
-                          <option value="all">ทุกสถานะ</option>
-                          <option value="present">มาเรียน</option>
-                          <option value="late">มาสาย</option>
-                       </select>
-                    </div>
-                 </div>
-                 
-                 <div className="overflow-x-auto rounded-3xl border border-gray-100 bg-white/30">
-                    <table className="min-w-full divide-y divide-gray-100">
-                       <thead className="bg-gray-50/50">
-                          <tr>
-                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
-                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">เวลาเช็คชื่อ</th>
-                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">สถานะ</th>
-                             <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">ความแม่นยำ</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-gray-100">
-                          {getPaginatedRecords().map((record, idx) => (
-                             <tr key={idx} className="hover:bg-white/50 transition-colors group">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="font-semibold text-gray-900 group-hover:text-[#0071e3] transition-colors">{record.student_id}</div>
-                                  <div className="text-xs text-gray-400">{record.student_email}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {new Date(record.check_in_time).toLocaleString('th-TH')}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                   <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
-                                     record.status === 'present' ? 'bg-green-100 text-green-600' : 'bg-yellow-100 text-yellow-600'
-                                   }`}>
-                                      {record.status === 'present' ? 'มาเรียน' : 'มาสาย'}
-                                   </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#0071e3]">
-                                   {record.face_match_score ? `${(record.face_match_score * 100).toFixed(0)}%` : '-'}
-                                </td>
-                             </tr>
-                          ))}
-                       </tbody>
-                    </table>
-                 </div>
-                 
-                 {getTotalPages() > 1 && (
-                   <div className="flex justify-center space-x-2 mt-8">
-                      <button 
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="p-2 glass-morphism disabled:opacity-30"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                      </button>
-                      <span className="flex items-center px-4 font-bold text-sm text-gray-400">
-                        หน้า {currentPage} จาก {getTotalPages()}
-                      </span>
-                      <button 
-                        onClick={() => setCurrentPage(p => Math.min(getTotalPages(), p + 1))}
-                        disabled={currentPage === getTotalPages()}
-                        className="p-2 glass-morphism disabled:opacity-30"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
-                   </div>
-                 )}
-              </div>
-            )}
-
             {selectedTab === 'analytics' && (
               <div className="space-y-8 animate-in fade-in duration-500">
                 <div className="flex items-center justify-between">
@@ -1059,48 +919,107 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* Attendance Trend */}
+                  {/* 100% Stacked Bar Graph */}
                   <div className="lg:col-span-2 glass-morphism p-8">
-                    <h3 className="text-lg font-semibold mb-6 text-gray-900">แนวโน้มการเข้าเรียน (7 วันล่าสุด)</h3>
-                    <div className="h-64 flex items-end justify-between gap-2 px-4 pb-10">
-                      {getAttendanceTrend().map((day, idx) => (
-                        <div key={idx} className="flex-1 flex flex-col items-center group relative h-full">
-                          <div className="flex-1 w-full flex flex-col justify-end items-center">
-                            <div 
-                              className="w-full max-w-[40px] bg-[#0071e3] rounded-t-xl transition-all group-hover:bg-[#0071e3]/80 relative"
-                              style={{ height: `${(day.count / (attendanceData.totalStudents || 1)) * 100}%`, minHeight: '4px' }}
-                            >
-                              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                                {day.count} คน
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">แนวโน้มการเข้าเรียน (5 คาบล่าสุด)</h3>
+                    <div className="h-64 flex items-end justify-between gap-6 px-4 pb-12">
+                      {getLatest5SessionsStats().map((day, idx) => {
+                        const presentPct = (day.present / day.total) * 100
+                        const latePct = (day.late / day.total) * 100
+                        const absentLeavePct = ((day.absent + day.leave) / day.total) * 100
+                        
+                        return (
+                          <div key={idx} className="flex-1 flex flex-col items-center group relative h-full">
+                            <div className="flex-1 w-full flex flex-col justify-end items-center">
+                              <div className="w-full max-w-[50px] h-full flex flex-col rounded-xl overflow-hidden shadow-sm border border-white/40">
+                                <div 
+                                  className="bg-green-500 transition-all hover:brightness-110 relative group/segment"
+                                  style={{ height: `${presentPct}%` }}
+                                >
+                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/segment:opacity-100 transition-opacity">
+                                    <span className="text-[10px] text-white font-bold">{Math.round(presentPct)}%</span>
+                                  </div>
+                                </div>
+                                <div 
+                                  className="bg-yellow-400 transition-all hover:brightness-110 relative group/segment"
+                                  style={{ height: `${latePct}%` }}
+                                >
+                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/segment:opacity-100 transition-opacity">
+                                    <span className="text-[10px] text-white font-bold">{Math.round(latePct)}%</span>
+                                  </div>
+                                </div>
+                                <div 
+                                  className="bg-red-400 transition-all hover:brightness-110 relative group/segment"
+                                  style={{ height: `${absentLeavePct}%` }}
+                                >
+                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/segment:opacity-100 transition-opacity">
+                                    <span className="text-[10px] text-white font-bold">{Math.round(absentLeavePct)}%</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="absolute -bottom-8 left-1/2 -translate-x-1/2">
+                              <p className="text-[10px] font-bold text-gray-400 whitespace-nowrap">{day.date}</p>
+                            </div>
+                            
+                            {/* Legend Tooltip */}
+                            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] py-2 px-3 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 shadow-xl pointer-events-none">
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span>มา: {day.present} คน</span>
+                              </div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                                <span>สาย: {day.late} คน</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                                <span>ขาด/ลา: {day.absent + day.leave} คน</span>
                               </div>
                             </div>
                           </div>
-                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2">
-                            <p className="text-[10px] font-bold text-gray-400 rotate-45 origin-left whitespace-nowrap">{day.date}</p>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
+                    </div>
+                    <div className="flex justify-center gap-6 mt-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">มาเรียน</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-yellow-400 rounded-sm"></div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">มาสาย</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 bg-red-400 rounded-sm"></div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">ขาด/ลา</span>
+                      </div>
                     </div>
                   </div>
 
                   {/* Distribution */}
                   <div className="glass-morphism p-8">
-                    <h3 className="text-lg font-semibold mb-6 text-gray-900">สัดส่วนการมาเรียน</h3>
+                    <h3 className="text-lg font-semibold mb-6 text-gray-900">สัดส่วนการเรียน</h3>
                     <div className="space-y-6">
-                      {[
-                        { label: 'มาตรงเวลา', count: attendanceData.attendanceStats.present, color: 'bg-green-500', total: attendanceData.recentAttendance.length },
-                        { label: 'มาสาย', count: attendanceData.attendanceStats.late, color: 'bg-yellow-500', total: attendanceData.recentAttendance.length }
-                      ].map((item, idx) => (
-                        <div key={idx}>
-                          <div className="flex justify-between text-sm mb-2">
-                            <span className="font-medium text-gray-600">{item.label}</span>
-                            <span className="font-bold text-gray-900">{item.total > 0 ? ((item.count / item.total) * 100).toFixed(1) : 0}%</span>
+                      {(() => {
+                        const { present, late, leave, absent } = attendanceData.attendanceStats
+                        const total = present + late + leave + absent
+                        return [
+                          { label: 'มาตรงเวลา', count: present, color: 'bg-green-500' },
+                          { label: 'มาสาย', count: late, color: 'bg-yellow-500' },
+                          { label: 'ขาด/ลา', count: leave + absent, color: 'bg-red-500' }
+                        ].map((item, idx) => (
+                          <div key={idx}>
+                            <div className="flex justify-between text-sm mb-2">
+                              <span className="font-medium text-gray-600">{item.label}</span>
+                              <span className="font-bold text-gray-900">{total > 0 ? ((item.count / total) * 100).toFixed(1) : 0}%</span>
+                            </div>
+                            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${item.color}`} style={{ width: `${total > 0 ? (item.count / total) * 100 : 0}%` }}></div>
+                            </div>
                           </div>
-                          <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
-                            <div className={`h-full ${item.color}`} style={{ width: `${item.total > 0 ? (item.count / item.total) * 100 : 0}%` }}></div>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      )})()}
                     </div>
                   </div>
                 </div>
@@ -1111,7 +1030,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                     <h3 className="text-lg font-semibold mb-6 text-gray-900">นักเรียนที่เข้าเรียนสม่ำเสมอ</h3>
                     <div className="space-y-4">
                       {attendanceData.topStudents.slice(0, 5).map((student, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-100">
+                        <div key={idx} className="flex items-center justify-between p-4 bg-white/50 rounded-2xl border border-gray-100 hover:border-[#0071e3]/30 transition-all">
                           <div className="flex items-center">
                             <div className="w-8 h-8 bg-green-100 text-green-600 rounded-lg flex items-center justify-center font-bold mr-3 text-xs">
                               {idx + 1}
@@ -1135,7 +1054,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                         .filter(s => s.attendanceRate < 50 && s.attendanceCount < attendanceData.totalSessions / 2)
                         .slice(0, 5)
                         .map((student, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-4 bg-red-50/30 rounded-2xl border border-red-100">
+                          <div key={idx} className="flex items-center justify-between p-4 bg-red-50/30 rounded-2xl border border-red-100 hover:border-red-300 transition-all">
                             <div className="flex items-center">
                               <div className="w-8 h-8 bg-red-100 text-red-600 rounded-lg flex items-center justify-center font-bold mr-3 text-xs">
                                 !
@@ -1162,20 +1081,40 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                     <p className="text-gray-500 text-sm mt-1">ดูรายละเอียดและแก้ไขสถานะการเช็คชื่อรายคาบ</p>
                   </div>
                   
-                  {/* Session Selector */}
-                  <div className="w-full md:w-72">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">เลือกคาบเรียน</label>
-                    <select 
-                      className="apple-input w-full py-3 pr-10 appearance-none bg-no-repeat bg-[right_1rem_center]"
-                      value={selectedSessionId || ''}
-                      onChange={(e) => setSelectedSessionId(e.target.value)}
-                    >
-                      {attendanceData.sessions.map((session, idx) => (
-                        <option key={session.id} value={session.id}>
-                          คาบที่ {attendanceData.sessions.length - idx}: {new Date(session.start_time).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
-                        </option>
-                      ))}
-                    </select>
+                  {/* Session Selector - Limit to latest 7 */}
+                  <div className="w-full md:w-80">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">เลือกคาบเรียน (7 คาบล่าสุด)</label>
+                    <div className="relative">
+                      <select 
+                        className="apple-input w-full py-4 pl-4 pr-10 appearance-none bg-no-repeat bg-[right_1rem_center] cursor-pointer shadow-sm hover:shadow-md transition-shadow"
+                        value={selectedSessionId || ''}
+                        onChange={(e) => setSelectedSessionId(e.target.value)}
+                      >
+                        {attendanceData.sessions.slice(0, 7).map((session, idx) => (
+                          <option key={session.id} value={session.id}>
+                            คาบที่ {attendanceData.sessions.length - idx}: {new Date(session.start_time).toLocaleString('th-TH', { 
+                              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                            })}
+                          </option>
+                        ))}
+                        {attendanceData.sessions.length > 7 && (
+                          <optgroup label="—————————————">
+                            {attendanceData.sessions.slice(7).map((session, idx) => (
+                              <option key={session.id} value={session.id}>
+                                คาบที่ {attendanceData.sessions.length - (idx + 7)}: {new Date(session.start_time).toLocaleString('th-TH', { 
+                                  day: 'numeric', month: 'short'
+                                })}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -1187,21 +1126,33 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                         const stats = getAttendanceStatsForSession(selectedSessionId)
                         return (
                           <>
-                            <div className="glass-morphism p-4 border-green-100 bg-green-50/30">
+                            <div className="glass-morphism p-5 border-green-100 bg-green-50/30 flex flex-col justify-between">
                               <p className="text-[10px] text-green-600 font-bold uppercase mb-1">มาเรียน</p>
-                              <p className="text-2xl font-bold text-green-700">{stats.present}</p>
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-3xl font-bold text-green-700">{stats.present}</p>
+                                <p className="text-xs text-green-600/60 font-medium">คน</p>
+                              </div>
                             </div>
-                            <div className="glass-morphism p-4 border-yellow-100 bg-yellow-50/30">
+                            <div className="glass-morphism p-5 border-yellow-100 bg-yellow-50/30 flex flex-col justify-between">
                               <p className="text-[10px] text-yellow-600 font-bold uppercase mb-1">มาสาย</p>
-                              <p className="text-2xl font-bold text-yellow-700">{stats.late}</p>
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-3xl font-bold text-yellow-700">{stats.late}</p>
+                                <p className="text-xs text-yellow-600/60 font-medium">คน</p>
+                              </div>
                             </div>
-                            <div className="glass-morphism p-4 border-red-100 bg-red-50/30">
-                              <p className="text-[10px] text-red-600 font-bold uppercase mb-1">ขาดเรียน</p>
-                              <p className="text-2xl font-bold text-red-700">{stats.absent}</p>
+                            <div className="glass-morphism p-5 border-red-100 bg-red-50/30 flex flex-col justify-between">
+                              <p className="text-[10px] text-red-600 font-bold uppercase mb-1">ขาด/ลา</p>
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-3xl font-bold text-red-700">{stats.absent + stats.leave}</p>
+                                <p className="text-xs text-red-600/60 font-medium">คน</p>
+                              </div>
                             </div>
-                            <div className="glass-morphism p-4 border-blue-100 bg-blue-50/30">
-                              <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">ทั้งหมด</p>
-                              <p className="text-2xl font-bold text-blue-700">{attendanceData.totalStudents}</p>
+                            <div className="glass-morphism p-5 border-blue-100 bg-blue-50/30 flex flex-col justify-between">
+                              <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">นักเรียนทั้งหมด</p>
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-3xl font-bold text-blue-700">{stats.total}</p>
+                                <p className="text-xs text-blue-600/60 font-medium">คน</p>
+                              </div>
                             </div>
                           </>
                         )

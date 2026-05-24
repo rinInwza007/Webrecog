@@ -13,7 +13,11 @@ interface EnrollmentWithClass extends StudentEnrollment {
     late: number
     absent: number
     percentage: number
+    attendedCount: number
+    totalSessions: number
   }
+  latestSession?: AttendanceSession | null
+  latestRecord?: AttendanceRecord | null
 }
 
 interface DetailedAttendance extends AttendanceRecord {
@@ -60,24 +64,48 @@ const StudentDashboard: FC = () => {
       
       setAttendanceRecords(records as DetailedAttendance[])
 
+      // 2.5 Fetch ALL sessions for the classes the student is enrolled in
+      const classIds = enrollments?.map(e => e.class_id) || []
+      let allSessions: AttendanceSession[] = []
+      if (classIds.length > 0) {
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('attendance_sessions')
+          .select('*')
+          .in('class_id', classIds)
+          .order('start_time', { ascending: false })
+        
+        if (!sessionsError) {
+          allSessions = sessions || []
+        }
+      }
+
       // 3. Process data to add stats to classes
       const processedClasses: EnrollmentWithClass[] = (enrollments || []).map(enrollment => {
         const classRecords = (records || []).filter(r => r.session?.class_id === enrollment.class_id)
+        const classSessions = allSessions.filter(s => s.class_id === enrollment.class_id)
         
         const present = classRecords.filter(r => r.status === 'present').length
         const late = classRecords.filter(r => r.status === 'late').length
-        const absent = classRecords.filter(r => r.status === 'absent').length
-        const total = classRecords.length
+        const leave = classRecords.filter(r => r.status === 'leave').length
+        const attendedCount = present + late + leave
+        const totalSessions = classSessions.length
+        
+        const latestSession = classSessions.length > 0 ? classSessions[0] : null
+        const latestRecord = latestSession ? classRecords.find(r => r.session_id === latestSession.id) : null
 
         return {
           ...enrollment,
           stats: {
-            total,
+            total: classRecords.length,
             present,
             late,
-            absent,
-            percentage: total > 0 ? Math.round(((present + late) / total) * 100) : 0
-          }
+            absent: Math.max(0, totalSessions - (present + late + leave)),
+            percentage: totalSessions > 0 ? Math.round((attendedCount / totalSessions) * 100) : 0,
+            attendedCount,
+            totalSessions
+          },
+          latestSession,
+          latestRecord
         }
       })
 
@@ -376,26 +404,43 @@ const StudentDashboard: FC = () => {
                     {item.classes?.schedule || 'ไม่มีข้อมูลตารางเรียน'}
                   </p>
 
-                  {/* Mini Stats Grid */}
-                  <div className="grid grid-cols-3 gap-3 mb-6">
-                    <div className="bg-green-50/50 rounded-2xl p-3 border border-green-100/50 text-center">
-                      <p className="text-[9px] text-green-600 font-bold uppercase tracking-tighter mb-1">มาเรียน</p>
-                      <p className="text-xl font-bold text-green-700">{item.stats?.present}</p>
-                    </div>
-                    <div className="bg-yellow-50/50 rounded-2xl p-3 border border-yellow-100/50 text-center">
-                      <p className="text-[9px] text-yellow-600 font-bold uppercase tracking-tighter mb-1">มาสาย</p>
-                      <p className="text-xl font-bold text-yellow-700">{item.stats?.late}</p>
-                    </div>
-                    <div className="bg-red-50/50 rounded-2xl p-3 border border-red-100/50 text-center">
-                      <p className="text-[9px] text-red-600 font-bold uppercase tracking-tighter mb-1">ขาด</p>
-                      <p className="text-xl font-bold text-red-700">{item.stats?.absent}</p>
-                    </div>
+                  {/* Latest Status */}
+                  <div className="mb-6 p-4 bg-gray-50/50 rounded-2xl border border-gray-100/50">
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mb-2">สถานะการเช็คชื่อล่าสุด</p>
+                    {item.latestSession ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <div className="w-1.5 h-1.5 bg-[#0071e3] rounded-full mr-2"></div>
+                          <p className="text-xs font-semibold text-gray-700">
+                            คาบวันที่ {new Date(item.latestSession.start_time).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                          </p>
+                        </div>
+                        {item.latestRecord ? (
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
+                            item.latestRecord.status === 'present' ? 'bg-green-100 text-green-600' : 
+                            item.latestRecord.status === 'late' ? 'bg-yellow-100 text-yellow-600' : 
+                            'bg-blue-100 text-blue-600'
+                          }`}>
+                            เช็คชื่อแล้ว ({
+                              item.latestRecord.status === 'present' ? 'มาเรียน' : 
+                              item.latestRecord.status === 'late' ? 'มาสาย' : 'ลา'
+                            })
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-red-100 text-red-600 animate-pulse">
+                            ยังไม่ได้เช็คชื่อ
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">ยังไม่มีการเปิดคาบเรียนในวิชานี้</p>
+                    )}
                   </div>
 
                   {/* Progress Bar */}
                   <div className="mb-2">
                     <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-2">
-                      <span className="uppercase tracking-wider">อัตราการเข้าเรียน</span>
+                      <span className="uppercase tracking-wider">อัตราการเข้าเรียน ({item.stats?.attendedCount}/{item.stats?.totalSessions})</span>
                       <span className={`px-2 py-0.5 rounded-full ${item.stats && item.stats.percentage >= 80 ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
                         {item.stats?.percentage}%
                       </span>
