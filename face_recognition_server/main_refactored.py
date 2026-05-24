@@ -353,6 +353,8 @@ async def process_motion_snapshot(
             "new_records": result.get('new_records', 0),
             "faces_detected": result.get('faces_detected', 0),
             "processing_time_ms": int(result.get('processing_time', 0) * 1000),
+            "already_checked": result.get('already_checked', 0),
+            "unrecognized": result.get('unrecognized', 0),
 
             # Spoof detection results
             "spoof_detected": result.get('spoof_detected', False),
@@ -406,6 +408,10 @@ async def manual_capture_motion(
             "session_id": session_id,
             "faces_detected": result.get('faces_detected', 0),
             "new_records": result.get('new_records', 0),
+            "already_checked": result.get('already_checked', 0),
+            "unrecognized": result.get('unrecognized', 0),
+
+
             "spoof_detected": result.get('spoof_detected', False),
             "spoof_count": result.get('spoof_count', 0),
             "spoof_timestamp": result.get('spoof_timestamp'),

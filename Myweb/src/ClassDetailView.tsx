@@ -683,16 +683,32 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                             <div className="w-8 h-8 rounded-full bg-[#0071e3]/10 flex items-center justify-center text-[#0071e3] font-bold text-xs flex-shrink-0">
                               {record.users?.full_name?.charAt(0) || '?'}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-xs truncate">{record.users?.full_name || 'Unknown'}</p>
-                              <div className="flex items-center space-x-1 mt-0.5">
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                  record.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                                }`}>
-                                  {record.status === 'present' ? 'มา' : 'สาย'}
+                            <div className="flex items-center space-x-2 w-full">
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                record.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {record.status === 'present' ? 'มา' : 'สาย'}
+                              </span>
+                              <span className="text-[9px] text-gray-400 shrink-0">{record.check_in_time?.split('T')[1]?.slice(0, 5)}</span>
+                              
+                              <div className="flex-1 flex flex-col space-y-0.5">
+                                <span className="text-[9px] text-gray-400 font-medium">
+                                  {record.face_match_score ? `${(record.face_match_score * 100).toFixed(0)}%` : '-'}
                                 </span>
-                                <span className="text-[9px] text-gray-400">{record.check_in_time?.split('T')[1]?.slice(0, 5)}</span>
+                                <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      record.face_match_score >= 0.8 ? 'bg-green-400' :
+                                      record.face_match_score >= 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+                                    }`}
+                                    style={{ width: `${(record.face_match_score || 0) * 100}%` }}
+                                  />
+                                </div>
                               </div>
+
+                              <p className="text-[9px] font-semibold text-gray-700 truncate shrink-0 max-w-[60px]">
+                                {record.users?.full_name || 'Unknown'}
+                              </p>
                             </div>
                           </div>
                         ))}
