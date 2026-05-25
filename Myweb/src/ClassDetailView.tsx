@@ -347,8 +347,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
     document.body.removeChild(link)
   }
 
-  const exportSummaryToCSV = () => {
-    if (attendanceData.recentAttendance.length === 0) {
+  const exportCombinedToCSV = () => {
+  if (attendanceData.recentAttendance.length === 0 || attendanceData.sessions.length === 0) {
     Swal.fire({
       icon: 'warning',
       title: 'ไม่มีข้อมูล',
@@ -357,69 +357,62 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
     setShowExportModal(false)
     return
   }
-    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', 'อีเมล', 'คาบเรียนทั้งหมด', 'มาเรียน', 'สาย', 'ขาด', 'ร้อยละการเข้าเรียน']
-    const rows = attendanceData.topStudents.map(student => {
-      const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
-      const present = studentRecords.filter(r => r.status === 'present').length
-      const late = studentRecords.filter(r => r.status === 'late').length
-      const totalSessions = attendanceData.totalSessions
-      const absent = totalSessions - (present + late)
-      const rate = totalSessions > 0 ? ((present + late) / totalSessions * 100).toFixed(2) : '0.00'
-      return [student.student_id, student.name, student.email, totalSessions, present, late, absent, `${rate}%`]
-    })
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-    downloadCSV(csvContent, 'summary')
-    setShowExportModal(false)
-  }
 
-  const exportMatrixToCSV = () => {
-    if (attendanceData.sessions.length === 0) {
-    Swal.fire({
-      icon: 'warning',
-      title: 'ไม่มีข้อมูล',
-      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มคาบเรียนก่อนส่งออกข้อมูล'
-    })
-    setShowExportModal(false)
-    return
-    }
-    // 1. Get all sessions sorted by date
-    const sortedSessions = [...attendanceData.sessions].sort((a, b) => 
-      new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  // Sort sessions by date
+  const sortedSessions = [...attendanceData.sessions].sort((a, b) =>
+    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  )
+
+  // Build period headers: คาบที่ 1, คาบที่ 2, ...
+  const periodHeaders = sortedSessions.map((_, i) => `คาบที่ ${i + 1}`)
+
+  // Final header row
+  const headers = [
+    'รหัสนักเรียน',
+    'ชื่อ-นามสกุล',
+    'คาบเรียนทั้งหมด',
+    'มาเรียน',
+    'สาย',
+    'ขาด',
+    ...periodHeaders
+  ]
+
+  const totalSessions = attendanceData.totalSessions
+
+  const rows = attendanceData.topStudents.map(student => {
+    const studentRecords = attendanceData.recentAttendance.filter(
+      r => r.student_id === student.student_id
     )
 
-    // 2. Prepare Headers: Student Info + Dates + Summary
-    const dateHeaders = sortedSessions.map(s => 
-      new Date(s.start_time).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
-    )
-    const headers = ['รหัสนักเรียน', 'ชื่อ-นามสกุล', ...dateHeaders, 'รวมมา/สาย', 'เปอร์เซ็นต์']
+    // Summary counts
+    const present = studentRecords.filter(r => r.status === 'present').length
+    const late = studentRecords.filter(r => r.status === 'late').length
+    const absent = totalSessions - (present + late)
 
-    // 3. Prepare Rows
-    const rows = attendanceData.topStudents.map(student => {
-      const studentRecords = attendanceData.recentAttendance.filter(r => r.student_id === student.student_id)
-      
-      // Get status for each session
-      const attendanceStatus = sortedSessions.map(session => {
-        const record = studentRecords.find(r => r.session_id === session.id)
-        if (!record) return 'ขาด'
-        return record.status === 'present' ? 'มา' : record.status === 'สาย' ? 'สาย' : 'ขาด'
-      })
-
-      const presentCount = studentRecords.filter(r => r.status === 'present' || r.status === 'late').length
-      const percentage = sortedSessions.length > 0 ? (presentCount / sortedSessions.length * 100).toFixed(0) : '0'
-
-      return [
-        student.student_id,
-        student.name,
-        ...attendanceStatus,
-        presentCount,
-        `${percentage}%`
-      ]
+    // Per-period status
+    const periodStatuses = sortedSessions.map(session => {
+      const record = studentRecords.find(r => r.session_id === session.id)
+      if (!record) return 'ขาด'
+      if (record.status === 'present') return 'มา'
+      if (record.status === 'late') return 'สาย'
+      return 'ขาด'
     })
 
-    const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-    downloadCSV(csvContent, 'daily_matrix')
-    setShowExportModal(false)
-  }
+    return [
+      student.student_id,
+      student.name,
+      totalSessions,
+      present,
+      late,
+      absent,
+      ...periodStatuses
+    ]
+  })
+
+  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+  downloadCSV(csvContent, 'attendance_combined')
+  setShowExportModal(false)
+}
 
   if (loading) {
     return (
@@ -1261,7 +1254,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
 
               <div className="grid grid-cols-1 gap-4">
                 <button
-                  onClick={exportSummaryToCSV}
+                  onClick={exportCombinedToCSV}
                   className="group flex items-center p-6 glass-morphism hover:bg-[#0071e3] hover:border-[#0071e3] transition-all text-left"
                 >
                   <div className="w-14 h-14 bg-[#0071e3]/10 group-hover:bg-white rounded-2xl flex items-center justify-center mr-6 transition-all">
@@ -1275,20 +1268,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                   </div>
                 </button>
 
-                <button
-                  onClick={exportMatrixToCSV}
-                  className="group flex items-center p-6 glass-morphism hover:bg-green-600 hover:border-green-600 transition-all text-left"
-                >
-                  <div className="w-14 h-14 bg-green-50 group-hover:bg-white rounded-2xl flex items-center justify-center mr-6 transition-all">
-                    <svg className="w-8 h-8 text-green-600 group-hover:text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-gray-900 group-hover:text-white transition-colors">รายงานเช็คชื่อรายวัน</h4>
-                    <p className="text-sm text-gray-400 group-hover:text-white/80 transition-colors">ตารางแสดงสถานะแยกตามวันที่ครบถ้วน</p>
-                  </div>
-                </button>
+                
               </div>
 
               <div className="mt-8 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
