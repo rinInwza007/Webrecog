@@ -337,10 +337,15 @@ const LiveVideoStream: FC<LiveVideoStreamProps> = ({
 
               if (checked > 0) {
                 setCaptureStatus('success')
-                setStatusMessage(`พบ ${result.faces_detected ?? 0} คน · เช็ค ${result.new_records ?? 0} · เช็คซ้ำ ${result.already_checked ?? 0}`)
+                setStatusMessage(
+                  `จริง ${result.faces_detected ?? 0} · ปลอม ${result.spoof_count ?? 0} · เช็ค ${result.new_records ?? 0} · เช็คซ้ำ ${result.already_checked ?? 0}`
+                )
               } else {
                 setCaptureStatus('failed')
-                setStatusMessage(`พบ ${result.faces_detected ?? 0} คน · เช็คไม่ได้ ${result.unrecognized ?? 0} คน`)
+                const totalUnrecognized = (result.unrecognized ?? 0) + (result.spoof_count ?? 0)
+                setStatusMessage(
+                  `จริง ${result.faces_detected ?? 0} · ปลอม ${result.spoof_count ?? 0} · เช็คไม่ได้ ${totalUnrecognized} คน`
+                )
               }
               statusTimeoutRef.current = setTimeout(() => {
                 setCaptureStatus('idle')

@@ -535,6 +535,11 @@ const handleConfirmStartSession = async () => {
           }
           setCurrentSession(null)      
           setAttendanceRecords([])    
+
+          // Clear spoof data
+          setSpoofEvents([])
+          setSelectedSpoofImage(null)
+
           Swal.fire({
             icon: 'success',
             title: 'สำเร็จ',
