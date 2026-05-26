@@ -38,6 +38,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [appUser, setAppUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  const userRef = useRef<SupabaseUser | null>(null)
+  const appUserRef = useRef<AppUser | null>(null)
+  const syncInProgress = useRef<boolean>(false)
 
   const fetchAppUser = async (userId: string) => {
     try {
@@ -48,102 +53,107 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         .single()
 
       if (!userError && userData) {
-        setAppUser(userData as AppUser)
         return userData as AppUser
-      } else {
-        console.warn('App user not found in database for auth user:', userId)
-        setAppUser(null)
-        return null
       }
+      return null
     } catch (error) {
-      console.error('Error fetching app user:', error)
-      setAppUser(null)
+      console.error('[Auth] Fetch error:', error)
       return null
     }
   }
 
-  const userRef = useRef<SupabaseUser | null>(null)
-  const appUserRef = useRef<AppUser | null>(null)
+  const handleAuthChange = async (authUser: SupabaseUser | null, source: string) => {
+    if (syncInProgress.current) {
+      console.log(`[Auth] Sync in progress, ignoring source: ${source}`)
+      return
+    }
 
-  useEffect(() => {
-    userRef.current = user
-    appUserRef.current = appUser
-  }, [user, appUser])
+    try {
+      syncInProgress.current = true
+      console.log(`[Auth] Change triggered by: ${source}`, authUser?.id)
+
+      if (!authUser) {
+        userRef.current = null
+        appUserRef.current = null
+        setUser(null)
+        setAppUser(null)
+      } else {
+        // If it's the same user and we already have a profile, just update user and stop
+        if (userRef.current?.id === authUser.id && appUserRef.current) {
+          setUser(authUser)
+        } else {
+          // New user or first load
+          const profile = await fetchAppUser(authUser.id)
+          userRef.current = authUser
+          appUserRef.current = profile
+          setUser(authUser)
+          setAppUser(profile)
+        }
+      }
+    } catch (err) {
+      console.error('[Auth] Handle change error:', err)
+    } finally {
+      syncInProgress.current = false
+      setLoading(false)
+      setIsInitialized(true)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
-    let authInitialized = false
 
-    const handleAuthChange = async (authUser: SupabaseUser | null) => {
-      if (!mounted) return
-
-      // If no auth user, clear everything and stop loading
-      if (!authUser) {
-        setUser(null)
-        setAppUser(null)
-        setLoading(false)
-        return
-      }
-
-      // If user is already set and same, and we already have appUser, just stop loading
-      if (userRef.current?.id === authUser.id && appUserRef.current) {
-        setLoading(false)
-        return
-      }
-
-      setUser(authUser)
-      const profile = await fetchAppUser(authUser.id)
-      
-      if (mounted) {
-        // If auth user exists but no profile, it might be a loop or missing data
-        // We sign out to prevent infinite loops in ProtectedRoutes
-        if (!profile && authInitialized) {
-          console.error('Auth user exists but profile missing. Signing out to prevent loop.')
-          await supabase.auth.signOut()
-          // No need to setLoading(false) here as signOut will trigger a reload/state change
-        } else {
-          setLoading(false)
-        }
-      }
-    }
-
-    // Get initial session
+    // Initial check
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (mounted) {
-          await handleAuthChange(session?.user ?? null)
-          authInitialized = true
+          await handleAuthChange(session?.user ?? null, 'initial_getSession')
         }
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        if (mounted) setLoading(false)
+      } catch (err) {
+        console.error('[Auth] Init error:', err)
+        if (mounted) {
+          setLoading(false)
+          setIsInitialized(true)
+        }
       }
     }
 
     initAuth()
 
-    // Listen for auth changes
+    // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!mounted) return
-        console.log('Auth event:', event)
+        console.log('[Auth] Event:', event)
         
-        // Only handle significant events to avoid redundant re-renders
+        // Skip handleAuthChange on initial SIGNED_IN if we're already initializing/initialized
+        // Supabase often fires SIGNED_IN right after getSession()
         if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
-          if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
-            setLoading(true)
+          // If we are already initialized and the user hasn't changed, we can skip full sync
+          if (isInitialized && session?.user?.id === userRef.current?.id && appUserRef.current) {
+            if (event === 'TOKEN_REFRESHED') return // Ignore token refresh flickers
           }
-          await handleAuthChange(session?.user ?? null)
+          
+          await handleAuthChange(session?.user ?? null, `onAuthStateChange_${event}`)
         }
       }
     )
 
+    // Safety timeout: If auth takes more than 5 seconds, stop loading
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('[Auth] Initialization timed out')
+        setLoading(false)
+        setIsInitialized(true)
+      }
+    }, 5000)
+
     return () => {
       mounted = false
       subscription.unsubscribe()
+      clearTimeout(timeout)
     }
-  }, []) // Empty dependency array is correct now that we use refs for state checks
+  }, []) // Keep dependencies empty to ensure single subscription
 
   const signUp = async (
     email: string,
@@ -165,11 +175,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }
 
   const signIn = async (email: string, password: string) => {
+    // Pre-emptively set loading to show feedback
     setLoading(true)
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     })
+    // If error, stop loading. If success, handleAuthChange will be triggered by onAuthStateChange
     if (error) setLoading(false)
     return { data, error }
   }
@@ -177,23 +189,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const signOut = async () => {
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signOut()
-      // Clear all storage to prevent stale state issues reported by user
-      window.localStorage.clear()
-      window.sessionStorage.clear()
-      
-      // Clear state manually for immediate feedback
+      // Clear state immediately to trigger UI update
+      userRef.current = null
+      appUserRef.current = null
       setUser(null)
       setAppUser(null)
       
+      const { error } = await supabase.auth.signOut()
+      
+      // Clear storage as requested by user to fix sticky states
+      window.localStorage.clear()
+      window.sessionStorage.clear()
+      
       return { error }
     } catch (err) {
-      console.error('Error during signOut:', err)
+      console.error('[Auth] SignOut error:', err)
       return { error: err }
     } finally {
       setLoading(false)
-      // Force reload to ensure a clean state across all tabs
-      window.location.href = '/'
+      // Hard reload to ensure a clean state
+      window.location.replace('/')
     }
   }
 

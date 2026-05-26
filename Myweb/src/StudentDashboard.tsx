@@ -268,9 +268,9 @@ const StudentDashboard: FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p className="text-gray-600">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
@@ -281,7 +281,7 @@ const StudentDashboard: FC = () => {
     <div className="min-h-screen">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-4 ">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
@@ -295,7 +295,7 @@ const StudentDashboard: FC = () => {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => fetchStudentData()}
-                className="p-2.5 text-gray-400 hover:text-[#0071e3] hover:bg-[#0071e3]/5 rounded-xl transition-all"
+                className="p-2.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
                 title="รีเฟรชข้อมูล"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -324,19 +324,19 @@ const StudentDashboard: FC = () => {
             <p className="text-3xl font-semibold text-gray-900">{classes.length}</p>
           </div>
           <div className="glass-card p-6 border-green-100 bg-green-50/30">
-            <p className="text-[10px] text-green-600/60 font-bold uppercase tracking-wider mb-1">มาเรียน</p>
+            <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider mb-1">มาเรียน</p>
             <p className="text-3xl font-semibold text-green-600">
               {attendanceRecords.filter(r => r.status === 'present' || r.status === 'late').length}
             </p>
           </div>
           <div className="glass-card p-6 border-yellow-100 bg-yellow-50/30">
-            <p className="text-[10px] text-yellow-600/60 font-bold uppercase tracking-wider mb-1">มาสาย</p>
+            <p className="text-[10px] text-yellow-600 font-bold uppercase tracking-wider mb-1">มาสาย</p>
             <p className="text-3xl font-semibold text-yellow-600">
               {attendanceRecords.filter(r => r.status === 'late').length}
             </p>
           </div>
           <div className="glass-card p-6 border-red-100 bg-red-50/30">
-            <p className="text-[10px] text-red-600/60 font-bold uppercase tracking-wider mb-1">ขาดเรียน</p>
+            <p className="text-[10px] text-red-600 font-bold uppercase tracking-wider mb-1">ขาดเรียน</p>
             <p className="text-3xl font-semibold text-red-600">
               {attendanceRecords.filter(r => r.status === 'absent').length}
             </p>
@@ -351,7 +351,7 @@ const StudentDashboard: FC = () => {
           </div>
           <button
             onClick={() => setShowJoinModal(true)}
-            className="apple-button-primary flex items-center space-x-2 py-3 px-6"
+            className="apple-button-primary !bg-green-600 hover:!bg-green-700 flex items-center space-x-2 py-3 px-6"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -372,7 +372,7 @@ const StudentDashboard: FC = () => {
             <p className="text-gray-500 font-medium mb-8">กรุณากรอกรหัสวิชาที่ได้รับจากอาจารย์เพื่อเริ่มใช้งาน</p>
             <button
               onClick={() => setShowJoinModal(true)}
-              className="apple-button-secondary py-3 px-8"
+              className="apple-button-secondary hover:text-green-600 hover:border-green-200 py-3 px-8"
             >
               กรอกรหัสวิชาเรียน
             </button>
@@ -380,10 +380,10 @@ const StudentDashboard: FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {classes.map((item) => (
-              <div key={item.enrollment_id} className="glass-card flex flex-col group hover:shadow-xl hover:border-[#0071e3]/30 transition-all">
+              <div key={item.enrollment_id} className="glass-card flex flex-col group hover:shadow-xl hover:border-green-600/30 transition-all">
                 <div className="p-8 flex-1">
                   <div className="flex justify-between items-start mb-6">
-                    <span className="bg-[#0071e3]/10 text-[#0071e3] text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">
+                    <span className="bg-green-600/10 text-green-600 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-widest">
                       {item.classes?.class_code}
                     </span>
                     <button
@@ -396,7 +396,7 @@ const StudentDashboard: FC = () => {
                       </svg>
                     </button>
                   </div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2 line-clamp-1 group-hover:text-[#0071e3] transition-colors">{item.classes?.subject_name}</h3>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2 line-clamp-1 group-hover:text-green-600 transition-colors">{item.classes?.subject_name}</h3>
                   <p className="text-xs text-gray-400 font-medium mb-6 flex items-center">
                     <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -410,7 +410,7 @@ const StudentDashboard: FC = () => {
                     {item.latestSession ? (
                       <div className="flex items-center justify-between">
                         <div className="flex items-center">
-                          <div className="w-1.5 h-1.5 bg-[#0071e3] rounded-full mr-2"></div>
+                          <div className="w-1.5 h-1.5 bg-green-600 rounded-full mr-2"></div>
                           <p className="text-xs font-semibold text-gray-700">
                             คาบวันที่ {new Date(item.latestSession.start_time).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
                           </p>
@@ -419,7 +419,7 @@ const StudentDashboard: FC = () => {
                           <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
                             item.latestRecord.status === 'present' ? 'bg-green-100 text-green-600' : 
                             item.latestRecord.status === 'late' ? 'bg-yellow-100 text-yellow-600' : 
-                            'bg-blue-100 text-blue-600'
+                            'bg-green-100 text-green-600'
                           }`}>
                             เช็คชื่อแล้ว ({
                               item.latestRecord.status === 'present' ? 'มาเรียน' : 
@@ -458,7 +458,7 @@ const StudentDashboard: FC = () => {
                 <div className="p-6 bg-white/30 border-t border-white/40">
                   <button
                     onClick={() => setSelectedClass(item)}
-                    className="w-full apple-button-secondary py-3 text-xs flex items-center justify-center space-x-2"
+                    className="w-full apple-button-secondary hover:text-green-600 hover:border-green-200 py-3 text-xs flex items-center justify-center space-x-2"
                   >
                     <span>ดูประวัติการเข้าเรียน</span>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -477,7 +477,7 @@ const StudentDashboard: FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowJoinModal(false)}></div>
           <div className="max-w-md w-full glass-card p-10 relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300 text-center">
-            <div className="w-20 h-20 bg-[#0071e3]/10 text-[#0071e3] rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-green-600/10 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
               </svg>
@@ -490,7 +490,7 @@ const StudentDashboard: FC = () => {
               value={classCode}
               onChange={(e) => setClassCode(e.target.value.toUpperCase())}
               placeholder="รหัสวิชา"
-              className="w-full px-4 py-5 bg-white/50 border border-gray-100 rounded-3xl text-center text-3xl font-bold tracking-[0.5em] focus:bg-white focus:border-[#0071e3] transition-all outline-none mb-8 shadow-inner"
+              className="w-full px-4 py-5 bg-white/50 border border-gray-100 rounded-3xl text-center text-3xl font-bold tracking-[0.5em] focus:bg-white focus:border-green-600 transition-all outline-none mb-8 shadow-inner"
               maxLength={6}
             />
             
@@ -504,7 +504,7 @@ const StudentDashboard: FC = () => {
               <button
                 onClick={joinClass}
                 disabled={actionLoading || classCode.length < 6}
-                className="flex-1 apple-button-primary py-4"
+                className="flex-1 apple-button-primary !bg-green-600 hover:!bg-green-700 py-4"
               >
                 {actionLoading ? 'กำลังลงทะเบียน...' : 'ยืนยัน'}
               </button>
@@ -575,7 +575,7 @@ const StudentDashboard: FC = () => {
                         </div>
                         <div className="text-right">
                           <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">ความแม่นยำ</p>
-                          <p className="text-sm font-black text-[#0071e3]">
+                          <p className="text-sm font-black text-green-600">
                             {record.face_match_score ? `${(record.face_match_score * 100).toFixed(0)}%` : '-'}
                           </p>
                         </div>
@@ -602,5 +602,3 @@ const StudentDashboard: FC = () => {
 }
 
 export default StudentDashboard
-
-

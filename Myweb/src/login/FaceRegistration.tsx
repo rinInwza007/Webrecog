@@ -452,7 +452,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
                   onClick={() => capturedPhotos[index] && retakePhoto(index)}
                   className={`flex items-center p-4 rounded-2xl border transition-all cursor-pointer ${
                     currentStep === index
-                      ? 'border-[#0071e3] bg-[#0071e3]/5 shadow-sm'
+                      ? 'border-green-600 bg-green-50/50 shadow-sm'
                       : capturedPhotos[index]
                         ? 'border-green-200 bg-green-50/50'
                         : 'border-gray-100 bg-gray-50/50'
@@ -493,7 +493,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
               <button
                 onClick={handleSubmit}
                 disabled={uploading || capturedPhotos.length < POSES.length}
-                className="w-full apple-button-primary py-4"
+                className="w-full apple-button-primary !bg-green-600 hover:!bg-green-700 py-4"
               >
                 {uploading ? (
                   <div className="flex items-center justify-center">

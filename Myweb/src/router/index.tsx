@@ -10,14 +10,23 @@ import { supabase } from '../supabaseClient'
 import type { UserRole } from '@/types'
 
 // Loading Component
-const LoadingScreen: FC = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-    <div className="text-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-      <p className="text-gray-600">กำลังโหลด...</p>
+const LoadingScreen: FC<{ role?: UserRole }> = ({ role }) => {
+  const isStudent = role === 'student'
+  const isTeacher = role === 'teacher'
+  
+  const fromColor = isStudent ? 'from-green-50' : isTeacher ? 'from-blue-50' : 'from-gray-50'
+  const toColor = isStudent ? 'to-emerald-100' : isTeacher ? 'to-indigo-100' : 'to-slate-100'
+  const borderColor = isStudent ? 'border-green-600' : isTeacher ? 'border-blue-600' : 'border-gray-400'
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center bg-gradient-to-br ${fromColor} ${toColor}`}>
+      <div className="text-center">
+        <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${borderColor} mx-auto mb-4`}></div>
+        <p className="text-gray-600">กำลังโหลด...</p>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 // Protected Route Component
 interface ProtectedRouteProps {
@@ -32,16 +41,26 @@ const ProtectedRoute: FC<ProtectedRouteProps> = ({
   const { appUser, loading } = useAuth()
 
   if (loading) {
-    return <LoadingScreen />
+    return <LoadingScreen role={requiredRole} />
   }
 
   if (!appUser) {
+    console.log('[Router] No user found, redirecting to login')
     return <Navigate to="/" replace />
   }
 
   if (requiredRole && appUser.role !== requiredRole) {
-    // Redirect to appropriate dashboard based on role
-    return <Navigate to={appUser.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />
+    console.warn(`[Router] Role mismatch for ${appUser.email}: expected ${requiredRole}, got ${appUser.role}`)
+    
+    // Explicitly redirect to the correct dashboard based on role to avoid loops
+    if (appUser.role === 'teacher') {
+      return <Navigate to="/teacher-dashboard" replace />
+    } else if (appUser.role === 'student') {
+      return <Navigate to="/dashboard" replace />
+    } else {
+      console.error('[Router] Unknown user role:', appUser.role)
+      return <Navigate to="/" replace />
+    }
   }
 
   return <>{children}</>
