@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
 import { supabase } from '../supabaseClient'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { User as AppUser, UserRole } from '@/types'
@@ -49,35 +49,74 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       if (!userError && userData) {
         setAppUser(userData as AppUser)
+        return userData as AppUser
       } else {
+        console.warn('App user not found in database for auth user:', userId)
         setAppUser(null)
+        return null
       }
     } catch (error) {
       console.error('Error fetching app user:', error)
       setAppUser(null)
+      return null
     }
   }
 
+  const userRef = useRef<SupabaseUser | null>(null)
+  const appUserRef = useRef<AppUser | null>(null)
+
+  useEffect(() => {
+    userRef.current = user
+    appUserRef.current = appUser
+  }, [user, appUser])
+
   useEffect(() => {
     let mounted = true
+    let authInitialized = false
+
+    const handleAuthChange = async (authUser: SupabaseUser | null) => {
+      if (!mounted) return
+
+      // If no auth user, clear everything and stop loading
+      if (!authUser) {
+        setUser(null)
+        setAppUser(null)
+        setLoading(false)
+        return
+      }
+
+      // If user is already set and same, and we already have appUser, just stop loading
+      if (userRef.current?.id === authUser.id && appUserRef.current) {
+        setLoading(false)
+        return
+      }
+
+      setUser(authUser)
+      const profile = await fetchAppUser(authUser.id)
+      
+      if (mounted) {
+        // If auth user exists but no profile, it might be a loop or missing data
+        // We sign out to prevent infinite loops in ProtectedRoutes
+        if (!profile && authInitialized) {
+          console.error('Auth user exists but profile missing. Signing out to prevent loop.')
+          await supabase.auth.signOut()
+          // No need to setLoading(false) here as signOut will trigger a reload/state change
+        } else {
+          setLoading(false)
+        }
+      }
+    }
 
     // Get initial session
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        if (!mounted) return
-
-        const authUser = session?.user ?? null
-        setUser(authUser)
-
-        if (authUser) {
-          await fetchAppUser(authUser.id)
-        } else {
-          setAppUser(null)
+        if (mounted) {
+          await handleAuthChange(session?.user ?? null)
+          authInitialized = true
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
-      } finally {
         if (mounted) setLoading(false)
       }
     }
@@ -90,22 +129,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         if (!mounted) return
         console.log('Auth event:', event)
         
-        const authUser = session?.user ?? null
-        
-        // Only trigger updates if the user ID actually changed
-        // This avoids redundant re-renders on token refreshes
-        setUser(prevUser => {
-          if (prevUser?.id === authUser?.id) return prevUser
-          return authUser
-        })
-
-        if (authUser) {
-          await fetchAppUser(authUser.id)
-        } else {
-          setAppUser(null)
+        // Only handle significant events to avoid redundant re-renders
+        if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+          if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+            setLoading(true)
+          }
+          await handleAuthChange(session?.user ?? null)
         }
-        
-        if (mounted) setLoading(false)
       }
     )
 
@@ -113,7 +143,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, []) // Empty dependency array is correct now that we use refs for state checks
 
   const signUp = async (
     email: string,
@@ -135,16 +165,36 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   }
 
   const signIn = async (email: string, password: string) => {
+    setLoading(true)
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
     })
+    if (error) setLoading(false)
     return { data, error }
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    return { error }
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.signOut()
+      // Clear all storage to prevent stale state issues reported by user
+      window.localStorage.clear()
+      window.sessionStorage.clear()
+      
+      // Clear state manually for immediate feedback
+      setUser(null)
+      setAppUser(null)
+      
+      return { error }
+    } catch (err) {
+      console.error('Error during signOut:', err)
+      return { error: err }
+    } finally {
+      setLoading(false)
+      // Force reload to ensure a clean state across all tabs
+      window.location.href = '/'
+    }
   }
 
   const value: AuthContextType = {

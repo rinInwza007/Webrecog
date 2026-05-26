@@ -69,6 +69,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
   const [poseReady, setPoseReady] = useState<boolean>(false)       // ปุ่มถ่ายรูปพร้อมกดหรือยัง
   const [poseGuide, setPoseGuide] = useState<string>('กำลังโหลด...') // ข้อความแนะนำผู้ใช้
   const [mpLoaded, setMpLoaded] = useState<boolean>(false)          // MediaPipe โหลดเสร็จหรือยัง
+  const capturedRef = useRef<boolean>(false) // ใช้ใน loop เพื่อตรวจสอบว่าถ่ายรูปไปแล้วหรือยัง (ไม่ต้อง re-render)
   // ====================================================
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -181,16 +182,20 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
           setPoseHoldProgress(progress)
 
           if (elapsed >= HOLD_DURATION) {
-            setPoseReady(true)
-            setPoseGuide('✅ พร้อมถ่าย! กด ถ่ายรูป ได้เลย')
-          } else {
-            setPoseReady(false)
-            setPoseGuide(`🕐 ค้างไว้... ${Math.ceil((HOLD_DURATION - elapsed) / 1000)} วินาที`)
-          }
+  if (!capturedRef.current) {
+    capturedRef.current = true   // lock ก่อน ป้องกัน call ซ้ำ
+    poseHoldStartRef.current = null
+    setPoseHoldProgress(0)
+    capturePhotoAuto()           // auto capture
+  }
+} else {
+  setPoseGuide(`🕐 ค้างไว้... ${Math.ceil((HOLD_DURATION - elapsed) / 1000)} วินาที`)
+}
         } else {
           // ขยับออก → reset
           poseHoldStartRef.current = null
           setPoseHoldProgress(0)
+          capturedRef.current = false
           setPoseReady(false)
 
           if (!isPitchOk) {
@@ -248,47 +253,48 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
     }
   }
 
-  const capturePhoto = () => {
-    // ========== [เพิ่ม] เช็คว่า Pose พร้อมก่อนถ่าย ==========
-    if (!poseReady) return
-    // =========================================================
+  const capturePhotoAuto = useCallback(() => {
+  if (!videoRef.current || !canvasRef.current) return
 
-    if (!videoRef.current || !canvasRef.current) return
+  const video = videoRef.current
+  const canvas = canvasRef.current
+  const context = canvas.getContext('2d')
+  if (!context) return
 
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-    if (!context) return
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const preview = URL.createObjectURL(blob)
-        const newPhoto: Photo = {
-          blob,
-          preview,
-          pose: POSES[currentStep].id,
-          label: POSES[currentStep].label
-        }
-
-        const updatedPhotos = [...capturedPhotos]
-        updatedPhotos[currentStep] = newPhoto
-        setCapturedPhotos(updatedPhotos)
-
-        // ========== [เพิ่ม] Reset poseReady หลังถ่าย ==========
-        setPoseReady(false)
-        setPoseGuide('จัดหน้าให้ตรงกับท่าทางถัดไป')
-        // ========================================================
-
-        if (currentStep < POSES.length - 1) {
-          setCurrentStep(currentStep + 1)
-        }
+  canvas.toBlob((blob) => {
+    if (blob) {
+      const step = currentStepRef.current
+      const preview = URL.createObjectURL(blob)
+      const newPhoto: Photo = {
+        blob,
+        preview,
+        pose: POSES[step].id,
+        label: POSES[step].label
       }
-    }, 'image/jpeg', 0.9)
-  }
+
+      setCapturedPhotos(prev => {
+        const updated = [...prev]
+        updated[step] = newPhoto
+        return updated
+      })
+
+      setPoseGuide('จัดหน้าให้ตรงกับท่าทางถัดไป')
+
+      if (step < POSES.length - 1) {
+        setCurrentStep(step + 1)
+      }
+
+      // reset lock หลังจาก state update เสร็จ
+      setTimeout(() => {
+        capturedRef.current = false
+      }, 500)
+    }
+  }, 'image/jpeg', 0.9)
+}, [])
 
   const retakePhoto = (index: number) => {
     setCurrentStep(index)
@@ -422,21 +428,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
               {/* ====================================================== */}
             </div>
 
-            {/* ========== [เพิ่ม] ปุ่มถ่ายรูปเปลี่ยนสีตาม poseReady ========== */}
-            <button
-              onClick={capturePhoto}
-              disabled={uploading || !cameraActive || !poseReady}
-              className={`absolute bottom-12 backdrop-blur-md text-gray-900 w-14 h-14 rounded-full flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all border ${
-                poseReady
-                  ? 'bg-white/90 border-white/50 cursor-pointer'
-                  : 'bg-white/30 border-white/20 cursor-not-allowed opacity-50'
-              }`}
-            >
-              <div className={`w-14 h-14 border-4 rounded-full shadow-sm transition-colors duration-300 ${
-                poseReady ? 'border-green-400 bg-white' : 'border-gray-900/10 bg-white'
-              }`}></div>
-            </button>
-            {/* ============================================================= */}
+            
           </div>
 
           {/* Right Side: Status & Preview */}
