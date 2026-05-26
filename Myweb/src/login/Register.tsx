@@ -283,7 +283,9 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
           <button
             type="submit"
             disabled={loading}
-            className="w-full apple-button-primary mt-4"
+            className={`w-full apple-button-primary mt-4 transition-colors duration-500 ${
+              formData.role === 'student' ? '!bg-green-600 hover:!bg-green-700 shadow-green-500/20' : '!bg-[#0071e3] hover:!bg-[#0077ed] shadow-blue-500/20'
+            }`}
           >
             {loading ? (
               <div className="flex items-center justify-center">
@@ -291,7 +293,7 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
                 กำลังสมัครสมาชิก...
               </div>
             ) : (
-              '🚀 สมัครสมาชิก'
+              `🚀 สมัครสมาชิก (${formData.role === 'student' ? 'นักเรียน' : 'อาจารย์'})`
             )}
           </button>
 
