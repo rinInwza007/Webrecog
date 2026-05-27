@@ -746,7 +746,7 @@ const handleConfirmStartSession = async () => {
   }
 
   return ( 
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-blue-50">
       {showClassDetail && selectedClass ? (
         <ClassDetailView 
           classData={selectedClass} 
@@ -764,21 +764,21 @@ const handleConfirmStartSession = async () => {
       ) : (
         <>
           {/* Header */}
-          <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm rounded-xl">
+          <header className="sticky top-0 z-40 bg-blue-600 backdrop-blur-xl border-b border-blue-700 shadow-md">
             <div className="max-w-7xl mx-auto px-6 py-4">
               <div className="flex justify-between items-center">
                 <div className="flex items-center space-x-4">
                   <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                    <img src={image} alt="Logo" className="h-14 w-14 object-contain" />
+                    <img src={image} alt="Logo" className="h-16 w-16 object-contain" />
                   </div>
                   <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-gray-900">แดชบอร์ดอาจารย์</h1>
-                    <p className="text-gray-500 text-sm font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">แดชบอร์ดอาจารย์</h1>
+                    <p className="text-blue-100 text-lg font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
                   </div>
                 </div>
                 <button
                   onClick={handleSignOut}
-                  className="apple-button-secondary py-2 px-5 text-sm flex items-center space-x-2 border-red-100 hover:bg-red-50 hover:text-red-600 transition-all"
+                  className="bg-white/10 hover:bg-white/20 text-white border border-white/20 py-2 px-5 text-sm flex items-center space-x-2 rounded-xl transition-all"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

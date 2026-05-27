@@ -278,24 +278,24 @@ const StudentDashboard: FC = () => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-green-50">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white/60 backdrop-blur-xl border-b border-white/40 shadow-sm">
+      <header className="sticky top-0 z-40 bg-green-600 backdrop-blur-xl border-b border-green-700 shadow-md">
         <div className="max-w-7xl mx-auto px-6 py-4 ">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                <img src={image} alt="Logo" className="h-12 w-12 object-contain" />
+                <img src={image} alt="Logo" className="h-16 w-16 object-contain" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight text-gray-900">แดชบอร์ดนักเรียน</h1>
-                <p className="text-gray-500 text-xs font-medium">ยินดีต้อนรับ, {appUser?.full_name}</p>
+                <h1 className="text-3xl font-semibold tracking-tight text-white">แดชบอร์ดนักเรียน</h1>
+                <p className="text-green-100 text-lg font-medium">ยินดีต้อนรับ, {appUser?.full_name}</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => fetchStudentData()}
-                className="p-2.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-all"
+                className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all"
                 title="รีเฟรชข้อมูล"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,7 +304,7 @@ const StudentDashboard: FC = () => {
               </button>
               <button
                 onClick={handleSignOut}
-                className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                className="p-2.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all"
                 title="ออกจากระบบ"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
