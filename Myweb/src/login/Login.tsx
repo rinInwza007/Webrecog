@@ -1,6 +1,7 @@
 import { useState, FormEvent, ChangeEvent, FC } from 'react'
 import { useAuth } from './AuthContext'
 import { useNavigate } from 'react-router-dom'
+import Swal from 'sweetalert2'
 import image from '../utils/logo/image.png'
 import type { AuthError } from '@supabase/supabase-js'
 
@@ -34,7 +35,23 @@ const Login: FC<LoginProps> = ({ onSwitchToRegister }) => {
 
       if (result.error) {
         const authError = result.error as AuthError
-        setError(authError.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
+        let errorMessage = 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ'
+        
+        if (authError.message === 'Invalid login credentials') {
+          errorMessage = 'อีเมลหรือรหัสผ่านไม่ถูกต้อง'
+        } else if (authError.message === 'Email not confirmed') {
+          errorMessage = 'กรุณายืนยันอีเมลของคุณก่อนเข้าสู่ระบบ'
+        } else {
+          errorMessage = authError.message
+        }
+
+        setError(errorMessage)
+        Swal.fire({
+          icon: 'error',
+          title: 'เข้าสู่ระบบไม่สำเร็จ',
+          text: errorMessage,
+          confirmButtonColor: '#0071e3'
+        })
         return
       }
 
@@ -42,7 +59,14 @@ const Login: FC<LoginProps> = ({ onSwitchToRegister }) => {
       // redirect จะถูกจัดการโดย AppRouter อัตโนมัติเมื่อ appUser ใน AuthContext อัปเดต
     } catch (err) {
       console.error('Login error:', err)
-      setError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ')
+      const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ'
+      setError(message)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: message,
+        confirmButtonColor: '#0071e3'
+      })
     } finally {
       setLoading(false)
     }
