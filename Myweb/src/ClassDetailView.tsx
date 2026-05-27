@@ -430,7 +430,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-blue-50">
       <div className="max-w-7xl mx-auto px-6 py-10">
         {realTimeUpdate && (
           <div className="fixed top-24 right-6 bg-[#0071e3] text-white px-6 py-3 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 duration-300">
