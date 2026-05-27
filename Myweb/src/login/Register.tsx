@@ -32,7 +32,7 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState<string>('') // ข้อความแสดงความสำเร็จหลังสมัครสมาชิก
-  const { signUp } = useAuth()
+  const { signUp, refreshProfile } = useAuth()
 
   // สร้าง school_id อัตโนมัติ
   const generateSchoolId = (fullName: string, role: UserRole): string => {
@@ -83,6 +83,8 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
         schoolId = generateSchoolId(formData.fullName, formData.role)
       }
 
+      console.log('Attempting registration for:', formData.email, 'with schoolId:', schoolId)
+
       // ตรวจสอบว่า school_id ซ้ำหรือไม่
       const { data: existingUser, error: checkError } = await supabase
         .from('users')
@@ -91,9 +93,13 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
         .maybeSingle()
 
       if (checkError) {
-        setError('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล')
-        setLoading(false)
-        return
+        console.warn('Check existing school_id error (might be RLS):', checkError)
+        // ถ้าติด RLS ให้ข้ามการตรวจสอบนี้ไปก่อน แล้วไปติดที่ insert แทนถ้าซ้ำจริง
+        if (checkError.code !== 'PGRST116' && !checkError.message.includes('policy')) {
+           setError('เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: ' + checkError.message)
+           setLoading(false)
+           return
+        }
       }
 
       if (existingUser) {
@@ -111,12 +117,16 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
 
       if (result.error) {
         const authError = result.error as AuthError
+        console.error('Supabase signUp error:', authError)
         setError(authError.message || 'เกิดข้อผิดพลาดในการสมัครสมาชิก')
         return
       }
 
       if (result.data?.user) {
         const authUser = result.data.user as SupabaseUser
+        const session = result.data.session
+
+        console.log('Supabase Auth user created:', authUser.id)
 
         // Insert user data into users table
         const appUserData: AppUser = {
@@ -130,25 +140,48 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
           updated_at: new Date().toISOString()
         }
 
+        console.log('Inserting into users table...')
         const { error: insertError } = await supabase
           .from('users')
           .insert([appUserData])
 
         if (insertError) {
           console.error('Error inserting user data:', insertError)
-          setError('เกิดข้อผิดพลาดในการบันทึกข้อมูลผู้ใช้: ' + insertError.message)
+          
+          // ถ้าเป็น error เรื่องอีเมลซ้ำ หรือ school_id ซ้ำ
+          if (insertError.code === '23505') {
+            setError('อีเมลหรือรหัสประจำตัวนี้ถูกใช้งานแล้ว')
+          } else {
+            setError('เกิดข้อผิดพลาดในการบันทึกข้อมูลโปรไฟล์: ' + insertError.message)
+          }
           return
         }
 
-        console.log('User registered successfully:', appUserData)
+        console.log('User profile created successfully')
+        
+        // ดึงข้อมูลโปรไฟล์ใหม่เพื่อให้ appUser ใน context อัปเดต
+        await refreshProfile()
+
+        // กรณีต้องยืนยันอีเมล (session จะเป็น null)
+        if (!session) {
+          Swal.fire({
+            icon: 'info',
+            title: 'สมัครสมาชิกสำเร็จ!',
+            text: 'กรุณาตรวจสอบอีเมลของคุณเพื่อยืนยันตัวตนก่อนเข้าสู่ระบบ',
+            confirmButtonColor: '#0071e3'
+          }).then(() => {
+            onSwitchToLogin()
+          })
+          return
+        }
 
         Swal.fire({
           icon: 'success',
           title: 'สมัครสมาชิกสำเร็จ!',
           text: formData.role === 'teacher' 
-            ? 'กำลังกลับไปที่หน้าเข้าสู่ระบบ...' 
+            ? 'กำลังกลับไปที่หน้าหลัก...' 
             : 'กำลังไปยังขั้นตอนลงทะเบียนใบหน้า...',
-          timer: 3000,
+          timer: 2000,
           showConfirmButton: false,
           allowOutsideClick: false
         }).then(() => {

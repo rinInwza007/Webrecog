@@ -18,6 +18,7 @@ interface AuthContextType {
   ) => Promise<{ data?: any; error?: any }>
   signIn: (email: string, password: string) => Promise<{ data?: any; error?: any }>
   signOut: () => Promise<{ error?: any }>
+  refreshProfile: () => Promise<AppUser | null>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -212,13 +213,25 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   }
 
+  const refreshProfile = async () => {
+    const { data: { user: currentUser } } = await supabase.auth.getUser()
+    if (currentUser) {
+      const profile = await fetchAppUser(currentUser.id)
+      appUserRef.current = profile
+      setAppUser(profile)
+      return profile
+    }
+    return null
+  }
+
   const value: AuthContextType = {
     user,
     appUser,
     loading,
     signUp,
     signIn,
-    signOut
+    signOut,
+    refreshProfile
   }
 
   return (

@@ -67,15 +67,13 @@ const ProtectedRoute: FC<ProtectedRouteProps> = ({
 }
 
 // Auth Flow Component
-interface AuthFlowState {
-  mode: 'login' | 'register' | 'face-registration'
-  registeredUser: any
-  userRole: UserRole | null
+interface AuthFlowProps {
+  initialMode?: 'login' | 'register' | 'face-registration'
 }
 
-const AuthFlow: FC = () => {
+const AuthFlow: FC<AuthFlowProps> = ({ initialMode = 'login' }) => {
   const [state, setState] = useState<AuthFlowState>({
-    mode: 'login',
+    mode: initialMode,
     registeredUser: null,
     userRole: null
   })
@@ -105,9 +103,8 @@ const AuthFlow: FC = () => {
   }
 
   const handleFaceRegistrationComplete = (): void => {
-    // Face registration complete, refresh to trigger AppRouter redirect
-    setState((prev) => ({ ...prev, mode: 'login' }))
-    //window.location.reload()
+    // Face registration complete, redirect to dashboard or reload to re-run checks
+    window.location.reload()
   }
 
   return (
@@ -131,8 +128,40 @@ const AuthFlow: FC = () => {
 // Main Router Component
 const AppRouter: FC = () => {
   const { appUser, loading } = useAuth()
+  const [hasFace, setHasFace] = useState<boolean | null>(null)
+  const [checkingFace, setCheckingFace] = useState(false)
 
-  if (loading) {
+  useEffect(() => {
+    const checkFaceRegistration = async () => {
+      if (appUser && appUser.role === 'student') {
+        setCheckingFace(true)
+        try {
+          const { data, error } = await supabase
+            .from('student_face_embeddings')
+            .select('id')
+            .eq('student_id', appUser.school_id)
+            .maybeSingle()
+          
+          if (!error && data) {
+            setHasFace(true)
+          } else {
+            setHasFace(false)
+          }
+        } catch (err) {
+          console.error('Error checking face registration:', err)
+          setHasFace(false) // Assume not registered if error
+        } finally {
+          setCheckingFace(false)
+        }
+      } else {
+        setHasFace(null)
+      }
+    }
+
+    checkFaceRegistration()
+  }, [appUser])
+
+  if (loading || checkingFace) {
     return <LoadingScreen />
   }
 
@@ -143,7 +172,13 @@ const AppRouter: FC = () => {
         path="/"
         element={
           appUser ? (
-            <Navigate to={appUser.role === 'teacher' ? '/teacher-dashboard' : '/dashboard'} replace />
+            appUser.role === 'teacher' ? (
+              <Navigate to="/teacher-dashboard" replace />
+            ) : hasFace ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <AuthFlow initialMode="face-registration" />
+            )
           ) : (
             <AuthFlow />
           )

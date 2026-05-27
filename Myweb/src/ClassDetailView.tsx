@@ -1076,7 +1076,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                   
                   {/* Session Selector - Limit to latest 7 */}
                   <div className="w-full md:w-80">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">เลือกคาบเรียน (7 คาบล่าสุด)</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">เลือกคาบเรียน</label>
                     <div className="relative">
                       <select 
                         className="apple-input w-full py-4 pl-4 pr-10 appearance-none bg-no-repeat bg-[right_1rem_center] cursor-pointer shadow-sm hover:shadow-md transition-shadow"
