@@ -686,7 +686,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
         )}
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
           <div className="glass-card p-6 border-white/60">
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">นักเรียนทั้งหมด</p>
             <p className="text-3xl font-semibold text-gray-900">{attendanceData.totalStudents}</p>
@@ -699,10 +699,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
             <p className="text-[10px] text-[#0071e3]/60 font-bold uppercase tracking-wider mb-1">อัตราการเข้าเรียน</p>
             <p className="text-3xl font-semibold text-[#0071e3]">{(attendanceData.averageAttendance * 100).toFixed(1)}%</p>
           </div>
-          <div className="glass-card p-6 border-white/60">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">การเช็คชื่อทั้งหมด</p>
-            <p className="text-3xl font-semibold text-gray-900">{attendanceData.recentAttendance.length}</p>
-          </div>
+          
         </div>
 
         {/* Main Tabs Container */}
