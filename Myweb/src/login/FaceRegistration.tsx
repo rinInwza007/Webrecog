@@ -340,9 +340,11 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
       const formData = new FormData()
       formData.append('student_id', userData.school_id)
       formData.append('student_email', userData.email)
+      formData.append('student_name', userData.full_name || '')
 
       capturedPhotos.forEach((photo) => {
         formData.append('images', photo.blob, `${photo.pose}.jpg`)
+        formData.append('poses', photo.pose)
       })
 
       setUploadProgress(50)
@@ -353,8 +355,15 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || 'การลงทะเบียนใบหน้าล้มเหลว')
+        let errorMessage = 'การลงทะเบียนใบหน้าล้มเหลว'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.detail || errorMessage
+        } catch (e) {
+          const textError = await response.text()
+          errorMessage = textError || `HTTP Error ${response.status}`
+        }
+        throw new Error(errorMessage)
       }
 
       const result = await response.json() as EnrollmentResult

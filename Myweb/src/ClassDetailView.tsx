@@ -631,8 +631,8 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                                 <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
                                   <div
                                     className={`h-full rounded-full transition-all ${
-                                      record.face_match_score >= 0.8 ? 'bg-green-400' :
-                                      record.face_match_score >= 0.6 ? 'bg-yellow-400' : 'bg-red-400'
+                                      record.face_match_score >= 0.75 ? 'bg-green-400' :
+                                      record.face_match_score >= 0.5 ? 'bg-yellow-400' : 'bg-red-400'
                                     }`}
                                     style={{ width: `${(record.face_match_score || 0) * 100}%` }}
                                   />
