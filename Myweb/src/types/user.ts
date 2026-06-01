@@ -1,10 +1,10 @@
 /**
  * user.types.ts
  * ---------------------------------------------------------------
- * ครอบคลุม: users, student_face_embeddings
+ * ครอบคลุม: users, student_face_enrollments, student_face_embeddings
  *
  * เหตุผลที่อยู่ด้วยกัน:
- *   - Face embedding เป็นข้อมูลที่ผูกติดกับ student (user) โดยตรง
+ *   - Face enrollment/embedding เป็นข้อมูลที่ผูกติดกับ student (user) โดยตรง
  *   - ทั้งคู่ใช้ใน enrollment flow และ face recognition pipeline
  * ---------------------------------------------------------------
  */
@@ -22,16 +22,32 @@ export interface User {
   updated_at: string
 }
 
-export interface StudentFaceEmbedding {
-  id: number             // serial PK
+export interface StudentFaceEnrollment {
+  id: number
   student_id: string     // FK → users.school_id
-  face_embedding_json: string  // JSON string ของ embedding vector
-  face_quality: number   // 0.00–1.00
   enrollment_type: EnrollmentType
-  images_used: number
   system_version: string
   motion_optimized: boolean
   is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface StudentFaceEmbedding {
+  id: number             // serial PK
+  enrollment_id: number  // FK → student_face_enrollments.id
+  student_id: string     // FK → users.school_id
+  pose: string           // e.g., 'front', 'left', 'right'
+  embedding_model: string // e.g., 'arcface_buffalo_l'
+  face_embedding: number[] // Vector data
+  face_quality: number   // 0.00–1.00
+  blur_score: number | null
+  brightness_score: number | null
+  yaw_angle: number | null
+  pitch_angle: number | null
+  roll_angle: number | null
+  face_image_url: string | null
+  metadata_json: Record<string, any> | null
   created_at: string
   updated_at: string
 }

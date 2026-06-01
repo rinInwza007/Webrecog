@@ -18,6 +18,8 @@ pydantic==2.5.0
 scikit-learn==1.3.2
 scipy==1.11.4
 faiss-cpu==1.7.4
+insightface
+onnxruntime
 
 # Database / Supabase SDK (legacy API)
 supabase==1.0.4

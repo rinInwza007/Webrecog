@@ -137,9 +137,10 @@ const AppRouter: FC = () => {
         setCheckingFace(true)
         try {
           const { data, error } = await supabase
-            .from('student_face_embeddings')
+            .from('student_face_enrollments')
             .select('id')
             .eq('student_id', appUser.school_id)
+            .eq('is_active', true)
             .maybeSingle()
           
           if (!error && data) {

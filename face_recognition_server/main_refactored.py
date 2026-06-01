@@ -427,6 +427,8 @@ async def enroll_face_advanced(
     images: List[UploadFile] = File(...),
     student_id: str = Form(...),
     student_email: str = Form(...),
+    student_name: str = Form(''),           
+    poses: List[str] = Form(None),          
     enrollment_method: str = Form('weighted_centroid'),
     min_quality_threshold: float = Form(0.3)
 ):
@@ -518,7 +520,8 @@ async def enroll_face_advanced(
             student_id,
             all_encodings,
             quality_scores,
-            method=enrollment_method
+            method=enrollment_method,
+            poses=poses or ['front', 'left', 'right']
         )
         
         if not success:
@@ -592,6 +595,7 @@ async def test_advanced_recognition(
         
         # Process faces
         detected_faces = process_faces_with_advanced_matching(
+            "debug",
             image_array,
             enrolled_students,
             config,
