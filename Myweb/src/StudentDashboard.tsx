@@ -323,7 +323,7 @@ const StudentDashboard: FC = () => {
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">วิชาทั้งหมด</p>
             <p className="text-3xl font-semibold text-gray-900">{classes.length}</p>
           </div>
-          <div className="glass-card p-6 border-green-100 bg-green-50/30">
+          {/* <div className="glass-card p-6 border-green-100 bg-green-50/30">
             <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider mb-1">มาเรียน</p>
             <p className="text-3xl font-semibold text-green-600">
               {attendanceRecords.filter(r => r.status === 'present' || r.status === 'late').length}
@@ -340,7 +340,7 @@ const StudentDashboard: FC = () => {
             <p className="text-3xl font-semibold text-red-600">
               {attendanceRecords.filter(r => r.status === 'absent').length}
             </p>
-          </div>
+          </div> */}
         </div>
 
         {/* Action Header */}
