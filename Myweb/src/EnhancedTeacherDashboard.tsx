@@ -22,17 +22,6 @@ const TIMES = Array.from({ length: 10 }, (_, i) => {
 })
 
 const EnhancedTeacherDashboard: FC = () => {
-  //spoof
-  const [spoofEvents, setSpoofEvents] = useState<SpoofEvent[]>([])
-  const [selectedSpoofImage, setSelectedSpoofImage] = useState<SpoofEvent | null>(null)
-
-  const handleSpoofDetected = (event: SpoofEvent) => {
-    console.log('showClassDetail:', showClassDetail)
-  console.log('🚨 Spoof detected:', event)
-  setSpoofEvents(prev => [event, ...prev]) // ใหม่สุดขึ้นก่อน
-   console.log('spoofEvents after:', spoofEvents)
-  }
-
   const { user, signOut } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
   const [sessions, setSessions] = useState<any[]>([])
@@ -48,16 +37,26 @@ const EnhancedTeacherDashboard: FC = () => {
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showStartSessionModal, setShowStartSessionModal] = useState<string | boolean>(false)
   const [showClassCodeModal, setShowClassCodeModal] = useState<{code: string, name: string} | null>(null)
-  const [showSessionDetailsModal, setShowSessionDetailsModal] = useState<any>(null)
   const [showManualCaptureModal, setShowManualCaptureModal] = useState(false)
   const [showAttendanceLogModal, setShowAttendanceLogModal] = useState(false)
+  const [showClassAttendanceSettingsModal, setShowClassAttendanceSettingsModal] = useState<Class | null>(null)
   const [activeLogTab, setActiveLogTab] = useState<'logs' | 'attendance'>('logs')
   const [sessionLogs, setSessionLogs] = useState<any[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [selectedClassForSession, setSelectedClassForSession] = useState<Class | null>(null)
   const [showSessionConfigModal, setShowSessionConfigModal] = useState(false)
+  
+  //spoof
+  const [spoofEvents, setSpoofEvents] = useState<SpoofEvent[]>([])
+  const [selectedSpoofImage, setSelectedSpoofImage] = useState<SpoofEvent | null>(null)
+
+  const handleSpoofDetected = (event: SpoofEvent) => {
+    console.log('showClassDetail:', showClassDetail)
+    console.log('🚨 Spoof detected:', event)
+    setSpoofEvents(prev => [event, ...prev]) // ใหม่สุดขึ้นก่อน
+    console.log('spoofEvents after:', spoofEvents)
+  }
   
   // Form states
   const [newClass, setNewClass] = useState({
@@ -74,6 +73,11 @@ const EnhancedTeacherDashboard: FC = () => {
     motion_threshold: 0.1,
     cooldown_seconds: 30,
     on_time_limit_minutes: 30
+  })
+
+  const [classAttendanceSettings, setClassAttendanceSettings] = useState({
+    default_duration_hours: 2,
+    default_on_time_limit_minutes: 30
   })
 
   // Video/Camera states
@@ -511,7 +515,6 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
         showConfirmButton: false
       })
       
-      setShowStartSessionModal(false)
       fetchTeacherData()
       
     } catch (error: any) {
@@ -526,19 +529,67 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
     }
   }
   const handleClassSelected = (cls: Class) => {
-  setSelectedClassForSession(cls)
-  setShowStartSessionModal(false)
-  setShowSessionConfigModal(true)
-}
+    setSelectedClassForSession(cls)
+    
+    // ตั้งค่า sessionConfig จากค่าที่บันทึกไว้ในคลาส หรือใช้ค่าเริ่มต้น
+    setSessionConfig({
+      ...sessionConfig,
+      duration_hours: cls.default_duration_hours || 2,
+      on_time_limit_minutes: cls.default_on_time_limit_minutes || 30
+    })
+    
+    setShowSessionConfigModal(true)
+  }
 
-// 3. In your startMotionDetectionSession, change the signature to accept
-//    classId from selectedClassForSession instead of the modal state:
-const handleConfirmStartSession = async () => {
-  if (!selectedClassForSession) return
-  await startMotionDetectionSession(selectedClassForSession.class_id)
-  setShowSessionConfigModal(false)
-  setSelectedClassForSession(null)
-}
+  const updateClassAttendanceSettings = async () => {
+    if (!showClassAttendanceSettingsModal) return
+    
+    setActionLoading(true)
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({
+          default_duration_hours: classAttendanceSettings.default_duration_hours,
+          default_on_time_limit_minutes: classAttendanceSettings.default_on_time_limit_minutes,
+          attendance_settings_updated_at: new Date().toISOString()
+        })
+        .eq('class_id', showClassAttendanceSettingsModal.class_id)
+
+      if (error) throw error
+
+      Swal.fire({
+        icon: 'success',
+        title: 'สำเร็จ',
+        text: 'บันทึกการตั้งค่าสำเร็จ',
+        timer: 2000,
+        showConfirmButton: false
+      })
+      
+      setShowClassAttendanceSettingsModal(null)
+      fetchTeacherData()
+    } catch (error: any) {
+      console.error('Error updating class settings:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถบันทึกการตั้งค่าได้: ' + error.message
+      })
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleConfirmStartSession = async () => {
+    if (!selectedClassForSession) return
+    const targetClass = selectedClassForSession
+    await startMotionDetectionSession(targetClass.class_id)
+    setShowSessionConfigModal(false)
+    setSelectedClassForSession(null)
+    
+    // นำทางไปยังหน้า Class Detail ทันทีเพื่อให้เห็นหน้าจอเช็คชื่อ
+    setSelectedClass(targetClass)
+    setShowClassDetail(true)
+  }
 
   const endSession = async (sessionId: string) => {
     Swal.fire({
@@ -777,11 +828,18 @@ const handleConfirmStartSession = async () => {
   return ( 
     <div className="min-h-screen bg-blue-50">
       {showClassDetail && selectedClass ? (
-        <ClassDetailView 
-          classData={selectedClass} 
+        <ClassDetailView
+          classData={selectedClass}
           onBack={handleBackFromClassDetail}
           currentSession={currentSession}
           onStartAttendance={handleClassSelected}
+          onShowSettings={(cls) => {
+            setClassAttendanceSettings({
+              default_duration_hours: cls.default_duration_hours || 2,
+              default_on_time_limit_minutes: cls.default_on_time_limit_minutes || 30
+            });
+            setShowClassAttendanceSettingsModal(cls);
+          }}
           onManualCapture={handleManualCaptureFromVideo}
           motionStats={motionStats}
           onSpoofDetected={handleSpoofDetected}
@@ -791,6 +849,7 @@ const handleConfirmStartSession = async () => {
           onEndSession={endSession}
         />
       ) : (
+
         <>
           {/* Header */}
           <header className="sticky top-0 z-40 bg-blue-600 backdrop-blur-xl border-b border-blue-700 shadow-md">
@@ -884,6 +943,22 @@ const handleConfirmStartSession = async () => {
                             </svg>
                           </div>
                           <div className="flex space-x-1">
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setClassAttendanceSettings({
+                                  default_duration_hours: cls.default_duration_hours || 2,
+                                  default_on_time_limit_minutes: cls.default_on_time_limit_minutes || 30
+                                });
+                                setShowClassAttendanceSettingsModal(cls);
+                              }}
+                              className="p-2 hover:bg-[#0071e3]/10 rounded-xl text-gray-400 hover:text-[#0071e3] transition-colors"
+                              title="ตั้งค่าเวลาเช็คชื่อ"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                              </svg>
+                            </button>
                             <button 
                               onClick={(e) => { e.stopPropagation(); setShowClassCodeModal({code: cls.class_code, name: cls.subject_name}) }}
                               className="p-2 hover:bg-[#0071e3]/10 rounded-xl text-gray-400 hover:text-[#0071e3] transition-colors"
@@ -1035,123 +1110,158 @@ const handleConfirmStartSession = async () => {
 
       
       {showSessionConfigModal && selectedClassForSession && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-    <div
-      className="absolute inset-0 bg-black/20 backdrop-blur-sm"
-      onClick={() => {
-        setShowSessionConfigModal(false)
-        setShowStartSessionModal(true)
-      }}
-    />
-    <div className="max-w-md w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
-      
-      {/* Header */}
-      <div className="bg-[#0071e3] p-8 text-white text-center">
-        <div className="text-3xl mb-2">⚙️</div>
-        <h3 className="text-2xl font-semibold tracking-tight">ตั้งค่าคาบเรียน</h3>
-        <p className="text-white/70 text-sm mt-1">{selectedClassForSession.subject_name}</p>
-      </div>
-
-      <div className="p-8 space-y-6">
-
-        {/* Duration */}
-        <div className="bg-gray-50/80 rounded-2xl p-5">
-          <label className="block text-sm font-semibold text-gray-700 mb-3">
-            🕐 ระยะเวลาของคลาส
-          </label>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min={0.5}
-              max={6}
-              step={0.5}
-              value={sessionConfig.duration_hours}
-              onChange={(e) =>
-                setSessionConfig({ ...sessionConfig, duration_hours: parseFloat(e.target.value) })
-              }
-              className="flex-1 accent-[#0071e3]"
-            />
-            <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
-              {sessionConfig.duration_hours.toFixed(1)} ชม.
-            </span>
-          </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
-            <span>0.5 ชม.</span><span>6 ชม.</span>
-          </div>
-        </div>
-              
-        {/* On-time limit */}
-        <div className="bg-gray-50/80 rounded-2xl p-5">
-          <label className="block text-sm font-semibold text-gray-700 mb-1">
-            ⏰ เวลามาทัน (นาทีหลังเริ่มคาบเรียน)
-          </label>
-          <p className="text-xs text-gray-400 mb-3">
-            นักเรียนที่เช็คชื่อหลังจากนี้จะถูกบันทึกว่า "สาย"
-          </p>
-          <div className="flex items-center space-x-4">
-            <input
-              type="range"
-              min={5}
-              max={60}
-              step={5}
-              value={sessionConfig.on_time_limit_minutes}
-              onChange={(e) =>
-                setSessionConfig({
-                  ...sessionConfig,
-                  on_time_limit_minutes: parseInt(e.target.value),
-                })
-              }
-              className="flex-1 accent-[#0071e3]"
-            />
-            <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
-              {sessionConfig.on_time_limit_minutes} นาที
-            </span>
-          </div>
-          <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
-            <span>5 นาที</span><span>60 นาที</span>
-          </div>
-
-          {/* Visual timeline hint */}
-          <div className="mt-4 flex items-center space-x-2 text-xs">
-            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">มาทัน</span>
-            <div className="flex-1 h-1 bg-gradient-to-r from-green-400 to-yellow-400 rounded-full" />
-            <span className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-semibold">สาย</span>
-            <div className="flex-1 h-1 bg-yellow-300 rounded-full" />
-            <span className="text-gray-400">{sessionConfig.duration_hours * 60} นาที</span>
-          </div>
-        </div>
-
-        {/* Summary */}
-        <div className="border border-[#0071e3]/20 bg-[#0071e3]/5 rounded-2xl p-4 text-sm text-gray-600 space-y-1">
-          <p>📚 คลาส: <span className="font-semibold text-gray-900">{selectedClassForSession.subject_name}</span></p>
-          <p>⏱ ระยะเวลา: <span className="font-semibold text-gray-900">{sessionConfig.duration_hours} ชั่วโมง</span></p>
-          <p>✅ มาทันภายใน: <span className="font-semibold text-gray-900">{sessionConfig.on_time_limit_minutes} นาที</span></p>
-          <p>⚠️ หลัง {sessionConfig.on_time_limit_minutes} นาที: <span className="font-semibold text-yellow-600">บันทึกว่าสาย</span></p>
-        </div>
-
-        {/* Actions */}
-        <div className="flex space-x-3 pt-2">
-          <button
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => {
               setShowSessionConfigModal(false)
               setSelectedClassForSession(null)
             }}
-            className="flex-1 apple-button-secondary py-3 text-sm"
-          >
-            ยกเลิก
-          </button>
-          <button
-            onClick={handleConfirmStartSession}
-            disabled={actionLoading}
-            className="flex-1 apple-button-primary py-3 text-sm bg-[#0071e3] hover:bg-[#0077ed]"
-          >
-            {actionLoading ? 'กำลังเริ่ม...' : '🚀 เริ่มเช็คชื่อ'}
-          </button>
+          />
+          <div className="max-w-md w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
+            {/* Header */}
+            <div className="bg-[#0071e3] p-8 text-white text-center">
+              <div className="text-3xl mb-2">🚀</div>
+              <h3 className="text-2xl font-semibold tracking-tight">ยืนยันการเริ่มเช็คชื่อ</h3>
+              <p className="text-white/70 text-sm mt-1">{selectedClassForSession.subject_name}</p>
+            </div>
+
+            <div className="p-8 space-y-6">
+              <p className="text-center text-gray-600">คุณต้องการเริ่มการเช็คชื่อสำหรับคลาสนี้ใช่หรือไม่?</p>
+              
+              {/* Summary of settings */}
+              <div className="bg-gray-50/80 rounded-2xl p-5 border border-gray-100 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">🕐 ระยะเวลาคลาส:</span>
+                  <span className="font-bold text-gray-900">{sessionConfig.duration_hours} ชม.</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">⏰ มาทันภายใน:</span>
+                  <span className="font-bold text-green-600">{sessionConfig.on_time_limit_minutes} นาที</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-gray-200 pt-2">
+                  <span className="text-sm text-gray-500">⚠️ หลัง {sessionConfig.on_time_limit_minutes} นาที:</span>
+                  <span className="font-bold text-yellow-600">บันทึกว่าสาย</span>
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowSessionConfigModal(false)
+                    setSelectedClassForSession(null)
+                  }}
+                  className="flex-1 apple-button-secondary py-3 text-sm"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={handleConfirmStartSession}
+                  disabled={actionLoading}
+                  className="flex-1 apple-button-primary py-3 text-sm bg-[#0071e3] hover:bg-[#0077ed]"
+                >
+                  {actionLoading ? 'กำลังเริ่ม...' : 'ยืนยันเริ่มเช็คชื่อ'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
+
+      {showClassAttendanceSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={() => setShowClassAttendanceSettingsModal(null)}
+          />
+          <div className="max-w-md w-full glass-card overflow-hidden relative z-10 shadow-2xl animate-in fade-in zoom-in duration-300">
+            
+            {/* Header */}
+            <div className="bg-[#0071e3] p-8 text-white text-center">
+              <div className="text-3xl mb-2">⚙️</div>
+              <h3 className="text-2xl font-semibold tracking-tight">ตั้งค่าเวลาเช็คชื่อ (Template)</h3>
+              <p className="text-white/70 text-sm mt-1">{showClassAttendanceSettingsModal.subject_name}</p>
+            </div>
+
+            <div className="p-8 space-y-6">
+              {/* Duration */}
+              <div className="bg-gray-50/80 rounded-2xl p-5">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  🕐 ระยะเวลาของคลาสเรียน
+                </label>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={classAttendanceSettings.default_duration_hours}
+                    onChange={(e) =>
+                      setClassAttendanceSettings({ ...classAttendanceSettings, default_duration_hours: parseFloat(e.target.value) })
+                    }
+                    className="flex-1 accent-[#0071e3]"
+                  />
+                  <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
+                    {classAttendanceSettings.default_duration_hours.toFixed(0)} ชม.
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
+                  <span>1 ชม.</span><span>8 ชม.</span>
+                </div>
+              </div>
+                    
+              {/* On-time limit */}
+              <div className="bg-gray-50/80 rounded-2xl p-5">
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  ⏰ เวลามาทัน (นาทีหลังเริ่มคาบเรียน)
+                </label>
+                <p className="text-xs text-gray-400 mb-3">
+                  นักเรียนที่เช็คชื่อหลังจากนี้จะถูกบันทึกว่า "สาย"
+                </p>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min={5}
+                    max={60}
+                    step={5}
+                    value={classAttendanceSettings.default_on_time_limit_minutes}
+                    onChange={(e) =>
+                      setClassAttendanceSettings({
+                        ...classAttendanceSettings,
+                        default_on_time_limit_minutes: parseInt(e.target.value),
+                      })
+                    }
+                    className="flex-1 accent-[#0071e3]"
+                  />
+                  <span className="text-[#0071e3] font-bold text-sm w-16 text-right">
+                    {classAttendanceSettings.default_on_time_limit_minutes} นาที
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
+                  <span>5 นาที</span><span>60 นาที</span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex space-x-3 pt-2">
+                <button
+                  onClick={() => setShowClassAttendanceSettingsModal(null)}
+                  className="flex-1 apple-button-secondary py-3 text-sm"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={updateClassAttendanceSettings}
+                  disabled={actionLoading}
+                  className="flex-1 apple-button-primary py-3 text-sm bg-[#0071e3] hover:bg-[#0077ed]"
+                >
+                  {actionLoading ? 'กำลังบันทึก...' : '💾 บันทึกการตั้งค่า'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showClassCodeModal && (
         <ClassCodeDisplay
