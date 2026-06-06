@@ -9,6 +9,7 @@ interface ClassDetailViewProps {
   onBack: () => void
   currentSession: any | null
   onStartAttendance: (cls: Class) => void
+  onShowSettings: (cls: Class) => void
   onManualCapture: (imageBlob: Blob) => Promise<void>
   motionStats: any
   onSpoofDetected: (event: SpoofEvent) => void
@@ -57,6 +58,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
   onBack, 
   currentSession, 
   onStartAttendance,
+  onShowSettings,
   onManualCapture,
   motionStats,
   onSpoofDetected,
@@ -432,15 +434,6 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
   return (
     <div className="min-h-screen bg-blue-50">
       <div className="max-w-7xl mx-auto px-6 py-10">
-        {realTimeUpdate && (
-          <div className="fixed top-24 right-6 bg-[#0071e3] text-white px-6 py-3 rounded-2xl shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-            <div className="flex items-center space-x-2">
-              <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
-              <span className="font-medium">มีการเช็คชื่อใหม่ {realTimeUpdate.count} รายการ!</span>
-            </div>
-          </div>
-        )}
-
         {/* Header Card */}
         <div className="glass-card p-8 mb-8">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -489,15 +482,26 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                   <span className="text-sm font-bold uppercase tracking-wider">กำลังเช็คชื่อ...</span>
                 </div>
               ) : (
-                <button
-                  onClick={() => onStartAttendance(classData)}
-                  className="flex-1 md:flex-none apple-button-primary py-3 px-6 flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                  <span>เริ่มเช็คชื่อ</span>
-                </button>
+                <div className="flex items-center space-x-2 w-full md:w-auto">
+                  <button
+                    onClick={() => onShowSettings(classData)}
+                    className="p-3 bg-white text-[#0071e3] hover:bg-[#0071e3] hover:text-white rounded-2xl transition-all border border-[#0071e3]/20 shadow-sm"
+                    title="ตั้งค่าเวลาเช็คชื่อ"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => onStartAttendance(classData)}
+                    className="flex-1 md:flex-none apple-button-primary py-3 px-6 flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    <span>เริ่มเช็คชื่อ</span>
+                  </button>
+                </div>
               )}
               <button
                 onClick={() => setShowExportModal(true)}
