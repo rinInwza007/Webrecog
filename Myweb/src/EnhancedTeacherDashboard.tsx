@@ -15,6 +15,12 @@ interface SpoofEvent {
   spoof_count: number
 }
 
+const DAYS = ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
+const TIMES = Array.from({ length: 10 }, (_, i) => {
+  const hour = i + 8
+  return `${hour.toString().padStart(2, '0')}:00`
+})
+
 const EnhancedTeacherDashboard: FC = () => {
   //spoof
   const [spoofEvents, setSpoofEvents] = useState<SpoofEvent[]>([])
@@ -57,7 +63,11 @@ const EnhancedTeacherDashboard: FC = () => {
   const [newClass, setNewClass] = useState({
     subject_name: '',
     description: '',
-    schedule: ''
+    day: 'จันทร์',
+    startTime: '',
+    endTime: '',
+    total_sessions: 12,
+    max_checkins_per_week: 1
   })
   const [sessionConfig, setSessionConfig] = useState({
     duration_hours: 2,
@@ -391,6 +401,15 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       return
     }
 
+    if (!newClass.startTime || !newClass.endTime) {
+      Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'กรุณาเลือกเวลาเรียนให้ครบถ้วน'
+      })
+      return
+    }
+
     setActionLoading(true)
 
     try {
@@ -399,7 +418,9 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       const classData = {
         subject_name: newClass.subject_name.trim(),
         description: newClass.description?.trim() || null,
-        schedule: newClass.schedule.trim() || null,
+        schedule: `${newClass.day} ${newClass.startTime}-${newClass.endTime}`,
+        total_sessions: newClass.total_sessions || null,
+        max_checkins_per_week: newClass.max_checkins_per_week || null,
         teacher_id: user?.id,
         teacher_email: user?.email,
         class_code: classCode
@@ -417,7 +438,15 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       })
       
       setShowCreateModal(false)
-      setNewClass({ subject_name: '', description: '', schedule: '' })
+      setNewClass({ 
+        subject_name: '', 
+        description: '', 
+        day: 'จันทร์',
+        startTime: '09:00',
+        endTime: '12:00',
+        total_sessions: 12,
+        max_checkins_per_week: 1
+      })
       fetchTeacherData()
     } catch (error: any) {
       console.error('Error creating class:', error)
@@ -876,7 +905,15 @@ const handleConfirmStartSession = async () => {
                           </div>
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</h3>
-                        <p className="text-gray-400 text-sm font-bold mb-4">{cls.class_code}</p>
+                        <div className="flex items-center space-x-2 mb-4">
+                          <p className="text-gray-400 text-sm font-bold">{cls.class_code}</p>
+                          {cls.schedule && (
+                            <span className="text-gray-300 text-sm">•</span>
+                          )}
+                          {cls.schedule && (
+                            <p className="text-gray-400 text-sm truncate">{cls.schedule}</p>
+                          )}
+                        </div>
                         <div className="flex items-center text-[#0071e3] text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all">
                           <span>เข้าจัดการคลาส</span>
                           <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -901,13 +938,80 @@ const handleConfirmStartSession = async () => {
             <h3 className="text-2xl font-semibold tracking-tight text-gray-900 mb-6 text-center">สร้างคลาสใหม่</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ชื่อวิชา</label>
+                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ชื่อวิชา *</label>
                 <input 
                   className="w-full apple-input"
                   placeholder="เช่น วิทยาการคอมพิวเตอร์"
                   value={newClass.subject_name}
                   onChange={(e) => setNewClass({...newClass, subject_name: e.target.value})}
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">คำอธิบาย</label>
+                <input 
+                  className="w-full apple-input"
+                  placeholder="เช่น รายละเอียดวิชา"
+                  value={newClass.description}
+                  onChange={(e) => setNewClass({...newClass, description: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ตารางเรียน</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <select 
+                    className="w-full apple-input"
+                    value={newClass.day}
+                    onChange={(e) => setNewClass({...newClass, day: e.target.value})}
+                  >
+                    {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                  <select 
+                    className="w-full apple-input"
+                    value={newClass.startTime}
+                    onChange={(e) => {
+                      const newStartTime = e.target.value
+                      setNewClass({
+                        ...newClass, 
+                        startTime: newStartTime,
+                        endTime: '' // Reset end time when start time changes
+                      })
+                    }}
+                  >
+                    <option value="" disabled>เริ่มเรียน</option>
+                    {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <select 
+                    className="w-full apple-input"
+                    value={newClass.endTime}
+                    disabled={!newClass.startTime}
+                    onChange={(e) => setNewClass({...newClass, endTime: e.target.value})}
+                  >
+                    <option value="" disabled>จบคาบ</option>
+                    {TIMES.filter(t => !newClass.startTime || t > newClass.startTime).map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">จำนวนคาบทั้งหมด</label>
+                  <input 
+                    type="number"
+                    className="w-full apple-input"
+                    value={newClass.total_sessions}
+                    onChange={(e) => setNewClass({...newClass, total_sessions: parseInt(e.target.value) || 0})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">เช็คชื่อได้ต่อสัปดาห์</label>
+                  <input 
+                    type="number"
+                    className="w-full apple-input"
+                    value={newClass.max_checkins_per_week}
+                    onChange={(e) => setNewClass({...newClass, max_checkins_per_week: parseInt(e.target.value) || 0})}
+                  />
+                </div>
               </div>
               <div className="flex space-x-3 pt-4">
                 <button 

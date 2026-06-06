@@ -14,11 +14,13 @@ import type { EnrollmentStatus } from './common.ts'
 import type { UserRef } from './user.ts'
 
 export interface Class {
-  class_id: string       // uuid PK
+  class_id: string
   subject_name: string
   description: string | null
-  schedule: string | null
-  teacher_id: string | null  // FK → users.user_id
+  schedule: string | null           // วันเวลาเรียน เช่น "จันทร์ 09:00-12:00"
+  total_sessions: number | null     // จำนวนคาบทั้งเทอม เช่น 12
+  max_checkins_per_week: number | null  // เช็คชื่อได้ต่อ week เช่น 1
+  teacher_id: string | null
   teacher_email: string
   class_code: string
   created_at: string
