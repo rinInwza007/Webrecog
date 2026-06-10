@@ -19,6 +19,7 @@ import uuid
 import asyncio
 from datetime import timezone
 
+
 # Import from layers
 from state_module import supabase_manager, cache_manager, embedding_index_manager
 from database_view_helper import DatabaseViewHelper
@@ -191,7 +192,56 @@ async def start_motion_detection(
 ):
     """Start motion detection session"""
     try:
+        # 1. Fetch limits from classes table
+        class_result = supabase_manager.get_client()\
+            .table('classes')\
+            .select('total_sessions, max_checkins_per_week')\
+            .eq('class_id', class_id)\
+            .execute()
+        
+        if class_result.data:
+            total_limit = class_result.data[0].get('total_sessions')
+            weekly_limit = class_result.data[0].get('max_checkins_per_week')
+            
+            # 2. Check total session limit
+            if total_limit:
+                total_sessions_result = supabase_manager.get_client()\
+                    .table('attendance_sessions')\
+                    .select('id', count='exact')\
+                    .eq('class_id', class_id)\
+                    .in_('status', ['active', 'ended'])\
+                    .execute()
+                
+                total_count = total_sessions_result.count or 0
+                if total_count >= total_limit:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว ({total_count}/{total_limit})"
+                    )
+            
+            # 3. Check weekly session limit
+            if weekly_limit:
+                now_utc = datetime.now(timezone.utc)
+                week_start = (now_utc - timedelta(days=now_utc.weekday()))\
+                    .replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                weekly_sessions_result = supabase_manager.get_client()\
+                    .table('attendance_sessions')\
+                    .select('id', count='exact')\
+                    .eq('class_id', class_id)\
+                    .in_('status', ['active', 'ended'])\
+                    .gte('start_time', week_start.isoformat())\
+                    .execute()
+                
+                weekly_count = weekly_sessions_result.count or 0
+                if weekly_count >= weekly_limit:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
+                    )
+
         session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
         
         session_config = {
             'class_id': class_id,
@@ -211,8 +261,8 @@ async def start_motion_detection(
             'id': session_id,
             'class_id': class_id,
             'teacher_email': teacher_email,
-            'start_time': datetime.now().isoformat(),
-            'end_time': (datetime.now() + timedelta(hours=duration_hours)).isoformat(),
+            'start_time': now.isoformat(),
+            'end_time': (now + timedelta(hours=duration_hours)).isoformat(),
             'on_time_limit_minutes': on_time_limit_minutes,
             'status': 'active'
         }
@@ -237,7 +287,7 @@ async def start_motion_detection(
             "teacher_email": teacher_email,
             "enrolled_students": enrolled_students,
             "enrolled_count": len(enrolled_students),
-            "start_time": datetime.now().isoformat(),
+            "start_time": now.isoformat(),
             "motion_settings": {
                 "threshold": motion_threshold,
                 "cooldown_seconds": cooldown_seconds,
@@ -246,6 +296,8 @@ async def start_motion_detection(
             "database_status": "online" if db_save_success else "offline"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         error_msg = str(e)
         logger.error(f"❌ Error starting motion detection: {error_msg}")
@@ -830,17 +882,66 @@ async def start_motion_session(
 ):
     """Start a motion detection session"""
     try:
+        # 1. Fetch limits from classes table
+        class_result = supabase_manager.get_client()\
+            .table('classes')\
+            .select('total_sessions, max_checkins_per_week, subject_name')\
+            .eq('class_id', class_id)\
+            .execute()
+        
+        if class_result.data:
+            total_limit = class_result.data[0].get('total_sessions')
+            weekly_limit = class_result.data[0].get('max_checkins_per_week')
+            
+            # 2. Check total session limit
+            if total_limit:
+                total_sessions_result = supabase_manager.get_client()\
+                    .table('attendance_sessions')\
+                    .select('id', count='exact')\
+                    .eq('class_id', class_id)\
+                    .in_('status', ['active', 'ended'])\
+                    .execute()
+                
+                total_count = total_sessions_result.count or 0
+                if total_count >= total_limit:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว ({total_count}/{total_limit})"
+                    )
+            
+            # 3. Check weekly session limit
+            if weekly_limit:
+                now_utc = datetime.now(timezone.utc)
+                week_start = (now_utc - timedelta(days=now_utc.weekday()))\
+                    .replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                weekly_sessions_result = supabase_manager.get_client()\
+                    .table('attendance_sessions')\
+                    .select('id', count='exact')\
+                    .eq('class_id', class_id)\
+                    .in_('status', ['active', 'ended'])\
+                    .gte('start_time', week_start.isoformat())\
+                    .execute()
+                
+                weekly_count = weekly_sessions_result.count or 0
+                if weekly_count >= weekly_limit:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
+                    )
+
         # Create a motion detection session (same as realtime)
         session_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc)
         
-        # Create session in database
+        # Create session in memory
         motion_session_manager.create_session(
             session_id=session_id,
             class_id=class_id,
             teacher_email=teacher_email,
             on_time_limit_minutes=on_time_limit_minutes
         )
-        #ss
+
         # Save to database
         supabase_manager.get_client().table('attendance_sessions').insert({
             'id': session_id,
@@ -850,11 +951,9 @@ async def start_motion_session(
             'duration_hours': duration_hours,
             'status': 'active',
             'session_type': 'motion_detection',
-            'start_time': datetime.now().isoformat(),
-            'created_at': datetime.now().isoformat()
+            'start_time': now.isoformat(),
+            'created_at': now.isoformat()
         }).execute()
-        
-        #logger.info(f"🎥 Motion detection session started: {session_id}")
         
         return {
             "success": True,
@@ -863,9 +962,11 @@ async def start_motion_session(
             "teacher_email": teacher_email,
             "on_time_limit_minutes": on_time_limit_minutes,
             "duration_hours": duration_hours,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": now.isoformat()
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error starting motion detection session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

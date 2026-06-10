@@ -125,7 +125,6 @@ class PerUserCooldownManager:
             logger.info("🗑️  All user cooldowns cleared")
 
 
-
 class MotionDetectionProcessor:
     """Handle adaptive motion threshold and processing configuration"""
     
@@ -229,7 +228,7 @@ class MotionSessionManager:
                 'stats': {
                     'motion_events': 0,
                     'snapshots_taken': 0,
-                    'attendance_records': 0, 
+                    'attendance_records': 0,
                     'last_snapshot': None,
                     'motion_history': [],
                     'hourly_events': {}
@@ -356,10 +355,93 @@ class AttendanceRecordingService:
     def __init__(self, supabase_mgr=None, state_mgr=None):
         self.supabase_mgr = supabase_mgr or supabase_manager
         self.state_mgr = state_mgr or supabase_manager
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Helpers
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _get_session_ids_for_class(self, class_id: str) -> List[str]:
+        """Get all session IDs (active + ended) for a class"""
+        result = self.supabase_mgr.get_client()\
+            .table('attendance_sessions')\
+            .select('id')\
+            .eq('class_id', class_id)\
+            .execute()
+        return [r['id'] for r in (result.data or [])]
+
+    def _check_weekly_limit(
+    self, student_email: str, class_id: str
+) -> Dict[str, Any]:
     
-    async def record_attendance_from_face(self, face_info: Dict, session_id: str,
-                                        session_data: Dict, capture_time: str,
-                                        motion_strength: float = 0.5, phase: str = '0-10') -> bool:
+        try:
+            # ดึง max_checkins_per_week ของ class
+            class_result = self.supabase_mgr.get_client()\
+                .table('classes')\
+                .select('max_checkins_per_week')\
+                .eq('class_id', class_id)\
+                .execute()
+
+            if not class_result.data:
+                return {'allowed': True, 'reason': None,
+                        'weekly_session_count': 0, 'max_per_week': None}
+
+            max_per_week = class_result.data[0].get('max_checkins_per_week')
+
+            # ไม่ได้ตั้งค่า limit → ผ่านเลย
+            if not max_per_week:
+                return {'allowed': True, 'reason': None,
+                        'weekly_session_count': 0, 'max_per_week': None}
+
+            # หาวันจันทร์ต้นสัปดาห์ (UTC)
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
+            week_start = (now - timedelta(days=now.weekday()))\
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # นับจำนวน session ของ class นี้ที่เริ่มในสัปดาห์ปัจจุบัน
+            # (นับระดับ session ไม่ใช่ระดับ attendance record)
+            session_result = self.supabase_mgr.get_client()\
+                .table('attendance_sessions')\
+                .select('id', count='exact')\
+                .eq('class_id', class_id)\
+                .gte('start_time', week_start.isoformat())\
+                .execute()
+
+            weekly_session_count = session_result.count or 0
+
+            if weekly_session_count >= max_per_week:
+                return {
+                    'allowed': False,
+                    'reason': (
+                        f'weekly_session_limit_reached '
+                        f'({weekly_session_count}/{max_per_week} sessions this week)'
+                    ),
+                    'weekly_session_count': weekly_session_count,
+                    'max_per_week': max_per_week
+                }
+
+            return {
+                'allowed': True,
+                'reason': None,
+                'weekly_session_count': weekly_session_count,
+                'max_per_week': max_per_week
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking weekly session limit for class {class_id}: {e}")
+            # fail-open: ถ้า query พัง ให้ผ่านไปก่อนเพื่อไม่ block attendance
+            return {'allowed': True, 'reason': None,
+                    'weekly_session_count': 0, 'max_per_week': None}
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Main record method
+    # ──────────────────────────────────────────────────────────────────────────
+
+    async def record_attendance_from_face(
+        self, face_info: Dict, session_id: str,
+        session_data: Dict, capture_time: str,
+        motion_strength: float = 0.5, phase: str = '0-10'
+    ) -> bool:
         """Record attendance for a recognized face"""
         try:
             if not face_info.get('verified'):
@@ -368,7 +450,7 @@ class AttendanceRecordingService:
             student_id = face_info['student_id']
             confidence = face_info['confidence']
             
-            # Get student email (ไม่ใช้ .single() ป้องกัน HTTP 406)
+            # Get student email
             user_result = self.supabase_mgr.get_client().table('users')\
                 .select('email')\
                 .eq('school_id', student_id)\
@@ -380,30 +462,45 @@ class AttendanceRecordingService:
             
             student_email = user_result.data[0]['email']
             
-            # Check if already recorded
+            # ── Check duplicate ───────────────────────────────────────────────
             if self.supabase_mgr.check_attendance_exists(session_id, student_email):
-                logger.info(f"Student {student_id} already recorded, skipping")
+                logger.info(f"Student {student_id} already recorded in this session, skipping")
                 return False
-            
-            # ── Timezone helper ──────────────────────────────────────────
+
+            # ── Check weekly limit ────────────────────────────────────────────
+            class_id = session_data.get('class_id')
+            if class_id:
+                weekly_check = self._check_weekly_limit(student_email, class_id)
+                if not weekly_check['allowed']:
+                    logger.warning(
+                        f"⛔ Weekly limit blocked {student_id} "
+                        f"({student_email}): {weekly_check['reason']}"
+                    )
+                    return False
+                elif weekly_check['max_per_week']:
+                    logger.info(
+                        f"📊 Weekly usage for {student_id}: "
+                        f"{weekly_check['weekly_session_count'] + 1}/{weekly_check['max_per_week']}"
+                    )
+            # ─────────────────────────────────────────────────────────────────
+
+            # ── Timezone helper ───────────────────────────────────────────────
             def to_aware(dt_str: str) -> datetime:
                 """Parse datetime string และ force UTC ถ้าเป็น naive"""
                 from datetime import timezone
                 if not dt_str:
                     return datetime.now(timezone.utc)
-                # normalize Z, space separator, และ +07:00 style ทั้งหมด
                 dt_str = dt_str.strip().replace('Z', '+00:00').replace(' ', 'T')
                 try:
                     dt = datetime.fromisoformat(dt_str)
                 except ValueError:
-                    # fallback สำหรับ format ที่ไม่มี microseconds
                     dt = datetime.strptime(dt_str[:19], '%Y-%m-%dT%H:%M:%S')
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 return dt
-            # ─────────────────────────────────────────────────────────────
+            # ─────────────────────────────────────────────────────────────────
 
-            capture_dt   = to_aware(capture_time)
+            capture_dt    = to_aware(capture_time)
             session_start = to_aware(session_data['start_time'])
             on_time_limit = session_start + timedelta(
                 minutes=session_data.get('on_time_limit_minutes', 30)
@@ -417,12 +514,12 @@ class AttendanceRecordingService:
 
             status = 'present' if capture_dt <= on_time_limit else 'late'
             
-            # Prepare record (เฉพาะ fields ที่มีใน schema)
+            # Prepare record
             record_data = {
                 'session_id':        session_id,
                 'student_email':     student_email,
                 'student_id':        student_id,
-                'check_in_time':     capture_dt.isoformat(),   # ส่ง aware string เสมอ
+                'check_in_time':     capture_dt.isoformat(),
                 'status':            status,
                 'face_match_score':  round(float(confidence), 3),
                 'detection_method':  'advanced_motion_triggered',
@@ -450,10 +547,10 @@ class AttendanceRecordingService:
         except Exception as e:
             logger.error(
                 f"❌ Error saving attendance for {face_info.get('student_id')}: {e}",
-                exc_info=True   # print full traceback เพื่อ debug ต่อได้
+                exc_info=True
             )
             return False
-    
+
 
 class MotionProcessingService:
     """Orchestrate motion capture processing"""
@@ -467,7 +564,7 @@ class MotionProcessingService:
         """Get enrolled student IDs for a class"""
         return self.supabase_mgr.get_enrolled_students_for_class(class_id)
      
-    async def process_motion_capture(self, item: Dict) -> Dict[str, Any]: #รับ dict จาก main_refactored.py และส่งกลับเป็น dict ที่มีผลลัพธ์การประมวลผลใบหน้าและการบันทึก attendance
+    async def process_motion_capture(self, item: Dict) -> Dict[str, Any]:
         """Process motion-triggered snapshot"""
         try:
             start_time = time.time()
@@ -479,26 +576,25 @@ class MotionProcessingService:
             
             logger.info(f"🚶 Motion processing: {session_id} (phase: {phase}, strength: {motion_strength:.3f})")
             
-            # Get image array
             from PIL import Image
             import io
             import numpy as np
             
-            image_pil = Image.open(io.BytesIO(item['image_data'])) # แปลง bytes เป็น PIL Image
+            image_pil = Image.open(io.BytesIO(item['image_data']))
             if image_pil.mode != 'RGB':
                 image_pil = image_pil.convert('RGB')
             
-            image_array = np.array(image_pil) # แปลง PIL Image เป็น numpy array เพื่อส่งไปประมวลผลใน AI module ต่อไป
+            image_array = np.array(image_pil)
             
             # Get enrolled students
-            enrolled_students = await self.get_enrolled_students_for_class(session_data['class_id']) # ดึงรายชื่อ student_id ที่ลงทะเบียนใน class นั้นๆ จากฐานข้อมูล เพื่อใช้ในการตรวจสอบใบหน้าที่ตรวจจับได้ว่าตรงกับใครใน class หรือไม่
+            enrolled_students = await self.get_enrolled_students_for_class(session_data['class_id'])
             
             if not enrolled_students:
                 logger.warning(f"No enrolled students for motion capture: {session_id}")
                 return {'success': False, 'reason': 'no_students', 'new_records': 0}
             
             # Process faces with advanced matching
-            result_matching = process_faces_with_advanced_matching( # ส่งภาพและข้อมูลที่จำเป็นไปยัง AI module เพื่อประมวลผลและตรวจสอบใบหน้า
+            result_matching = process_faces_with_advanced_matching(
                 session_id,
                 image_array,
                 enrolled_students,
@@ -514,14 +610,15 @@ class MotionProcessingService:
             spoof_timestamp = result_matching.get('spoof_timestamp')
             spoof_image_b64 = result_matching.get('spoof_image_b64')
 
-            new_records = 0 # นับจำนวน attendance ที่ถูกบันทึกใหม่ในรอบนี้ 
-            already_checked = 0 #
-            unrecognized = 0 #
+            new_records = 0
+            already_checked = 0
+            unrecognized = 0
+
             for face_info in detected_faces:
                 if not face_info.get('verified'):
                     unrecognized += 1
                     continue
-                success = await self.attendance_service.record_attendance_from_face( # ส่งข้อมูลใบหน้าที่ตรวจจับได้ไปยัง AttendanceRecordingService เพื่อบันทึก attendance
+                success = await self.attendance_service.record_attendance_from_face(
                     face_info, session_id, session_data, item['capture_time'],
                     motion_strength, phase
                 )
@@ -529,6 +626,7 @@ class MotionProcessingService:
                     new_records += 1
                 else:
                     already_checked += 1
+
             if new_records > 0:
                 with motion_session_manager.lock:
                     if session_id in motion_session_manager.sessions:
