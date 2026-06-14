@@ -8,6 +8,7 @@
 
 // --- User & Auth ---
 export type UserRole = 'student' | 'teacher' | 'admin'
+export type UserStatus = 'active' | 'inactive' | 'graduated' | 'suspended'
 
 // --- Attendance ---
 export type AttendanceStatus = 'present' | 'late' | 'absent' | 'leave'

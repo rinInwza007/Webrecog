@@ -39,7 +39,7 @@ class InsightFaceManager:
                 cls._instance = super(InsightFaceManager, cls).__new__(cls)
                 cls._instance.app = FaceAnalysis(name='buffalo_l', providers=[
                                                  'CPUExecutionProvider'])  # Force CPU for compatibility
-                cls._instance.app.prepare(ctx_id=0, det_size=(640, 640))
+                cls._instance.app.prepare(ctx_id=-1, det_size=(640, 640)) # Use -1 for CPU, smaller det_size for speed
                 logger.info("🚀 InsightFace (SCRFD + ArcFace) initialized")
         return cls._instance
 
@@ -320,8 +320,11 @@ class FaceEmbeddingProcessor:
                 logger.debug(
                     f"🔧 Resized image for detection: {width}x{height} → {new_width}x{new_height}")
 
+            # InsightFace expects BGR
+            bgr_image = cv2.cvtColor(processed_image, cv2.COLOR_RGB2BGR)
+            
             # Detect faces using SCRFD
-            faces = insightface_manager.app.get(processed_image)
+            faces = insightface_manager.app.get(bgr_image)
 
             face_locations = []
             for face in faces:
@@ -384,7 +387,7 @@ class FaceEmbeddingProcessor:
             aspect_score = max(0.0, min(1.0, aspect_score))
             metrics['aspect_ratio_score'] = aspect_score
 
-            # 3. Brightness/Contrast using Laplacian (edge detection)
+            # 3. Sharpness/Blur using Laplacian
             if len(face_region.shape) == 3:
                 gray_face = cv2.cvtColor(face_region, cv2.COLOR_RGB2GRAY)
             else:
@@ -392,21 +395,27 @@ class FaceEmbeddingProcessor:
 
             laplacian = cv2.Laplacian(gray_face, cv2.CV_64F)
             sharpness_score = laplacian.var()
-            sharpness_score = min(1.0, sharpness_score / 100)
-            metrics['sharpness_score'] = sharpness_score
+            # Raw sharpness score for DB
+            metrics['blur_score'] = float(sharpness_score)
+            
+            # Normalized sharpness for overall quality
+            norm_sharpness = min(1.0, sharpness_score / 100)
+            metrics['sharpness_score'] = norm_sharpness
 
             # 4. Lighting quality (not too dark, not too bright)
             mean_brightness = np.mean(gray_face)
-            brightness_score = 1.0 - abs(mean_brightness - 127.5) / 127.5
-            brightness_score = max(0.0, brightness_score)
-            metrics['brightness_score'] = brightness_score
+            metrics['brightness_score'] = float(mean_brightness)
+            
+            brightness_quality = 1.0 - abs(mean_brightness - 127.5) / 127.5
+            brightness_quality = max(0.0, brightness_quality)
+            metrics['brightness_quality_score'] = brightness_quality
 
             # Overall quality (weighted average)
             overall_score = (
                 size_score * 0.25 +
                 aspect_score * 0.25 +
-                sharpness_score * 0.3 +
-                brightness_score * 0.2
+                norm_sharpness * 0.3 +
+                brightness_quality * 0.2
             )
 
             metrics['overall_score'] = overall_score
@@ -414,7 +423,69 @@ class FaceEmbeddingProcessor:
 
         except Exception as e:
             logger.error(f"Error calculating face quality: {e}")
-            return {'overall_score': 0.5}
+            return {'overall_score': 0.5, 'blur_score': 0.0, 'brightness_score': 0.0}
+
+    @staticmethod
+    def analyze_face_for_enrollment(image_array: np.ndarray) -> Optional[Dict]:
+        """Comprehensive analysis of a single face for enrollment"""
+        try:
+            if image_array is None or image_array.size == 0:
+                return None
+
+            # Optimize image if too large (consistent with detect_faces_in_image)
+            height, width = image_array.shape[:2]
+            max_dimension = 1024
+            processed_image = image_array
+            scale = 1.0
+
+            if max(height, width) > max_dimension:
+                scale = max_dimension / max(height, width)
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                processed_image = cv2.resize(image_array, (new_width, new_height))
+                logger.info(f"🔧 Resized enrollment image: {width}x{height} → {new_width}x{new_height}")
+
+            # InsightFace expects BGR
+            bgr_image = cv2.cvtColor(processed_image, cv2.COLOR_RGB2BGR)
+
+            faces = insightface_manager.app.get(bgr_image)
+            if not faces:
+                logger.warning(f"❌ No faces detected in enrollment image ({width}x{height})")
+                return None
+
+            # Take the primary face (largest bbox)
+            face = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]), reverse=True)[0]
+            
+            # Map bbox back to original scale if resized
+            bbox = face.bbox
+            if scale != 1.0:
+                bbox = bbox / scale
+                
+            bbox = bbox.astype(int)
+            location = (bbox[1], bbox[2], bbox[3], bbox[0]) # top, right, bottom, left
+            
+            # Quality metrics should be calculated on the original high-res face region if possible,
+            # but for consistency and since calculate_face_quality takes image_array, 
+            # we'll use the original image_array with the scaled bbox.
+            quality_metrics = FaceEmbeddingProcessor.calculate_face_quality(image_array, location)
+            
+            logger.info(f"✅ Detected face for enrollment: det_score={face.det_score:.4f}, pose={face.pose}")
+
+            return {
+                'embedding': face.normed_embedding,
+                'location': location,
+                'detection_score': float(face.det_score),
+                'pose_angles': {
+                    'pitch': float(face.pose[0]),
+                    'yaw': float(face.pose[1]),
+                    'roll': float(face.pose[2])
+                },
+                'quality': quality_metrics
+            }
+
+        except Exception as e:
+            logger.error(f"Error in analyze_face_for_enrollment: {e}", exc_info=True)
+            return None
 
 
 class SimilarityCalculator:
@@ -490,18 +561,51 @@ class AdvancedFaceEmbeddingManager:
         self.supabase_client = supabase_client
         self.cache_manager = cache_manager
 
+    def _get_pose_label(self, yaw: float, pitch: float, roll: float) -> str:
+        """Map yaw and pitch angles to a descriptive pose label"""
+        # Threshold for considering a pose non-frontal
+        threshold = 15.0
+        
+        yaw_label = ""
+        if yaw > threshold:
+            yaw_label = "right"
+        elif yaw < -threshold:
+            yaw_label = "left"
+            
+        pitch_label = ""
+        if pitch > threshold:
+            pitch_label = "down" # InsightFace pitch: positive is down, negative is up
+        elif pitch < -threshold:
+            pitch_label = "up"
+            
+        if not yaw_label and not pitch_label:
+            return "front"
+        elif yaw_label and pitch_label:
+            return f"{yaw_label}_{pitch_label}"
+        else:
+            return yaw_label or pitch_label
+
     def save_multiple_embeddings(self, student_id: str, embeddings: List[np.ndarray],
-                             qualities: List[float], method: str = 'all_separate',
-                             poses: List[str] = None) -> bool:
+                             metadata_list: List[Dict], method: str = 'all_separate') -> bool:
+        """
+        Save multiple embeddings with detailed metadata to the new schema
+        metadata_list contains dicts with: quality, pose_angles, detection_score, etc.
+        """
         try:
             if not embeddings or len(embeddings) == 0:
                 logger.error(f"No embeddings provided for {student_id}")
-                return False  # ✅ indent ถูก
+                return False
 
-            logger.info(f"🎯 Saving {len(embeddings)} ArcFace embeddings for {student_id} to new schema")
+            logger.info(f"🎯 Saving {len(embeddings)} ArcFace embeddings for {student_id} to new schema (advanced)")
 
             if not self.supabase_client:
                 return False
+
+            # Calculate average quality and detection scores for the enrollment record
+            qualities = [m['quality']['overall_score'] for m in metadata_list]
+            det_scores = [m['detection_score'] for m in metadata_list]
+            avg_quality = float(np.mean(qualities)) if qualities else 0.0
+            avg_det_score = float(np.mean(det_scores)) if det_scores else 0.0
 
             # Step 1: Deactivate previous enrollments
             self.supabase_client.get_client().table('student_face_enrollments').update({
@@ -512,10 +616,15 @@ class AdvancedFaceEmbeddingManager:
             # Step 2: Create new enrollment
             enrollment_data = {
                 'student_id': student_id,
-                'enrollment_type': 'multiple_angles',
-                'system_version': 'insightface_v1',
+                'enrollment_type': 'multiple_angles_advanced',
+                'system_version': 'if_v1',
                 'motion_optimized': True,
                 'is_active': True,
+                'avg_quality_score': round(avg_quality, 3),
+                'avg_detection_score': round(avg_det_score, 4),
+                'total_embeddings': len(embeddings),
+                'original_count': len(embeddings),
+                'embedding_model': 'insightface_arcface_buffalo_l',
                 'created_at': datetime.now().isoformat(),
                 'updated_at': datetime.now().isoformat()
             }
@@ -531,27 +640,32 @@ class AdvancedFaceEmbeddingManager:
             logger.info(f"✅ Created enrollment id={enrollment_id} for {student_id}")
 
             # Step 3: Save embeddings
-            poses_default = ['frontal', 'left', 'right', 'up', 'down']
-
-            for i, (embedding, quality) in enumerate(zip(embeddings, qualities)):
+            for i, (embedding, meta) in enumerate(zip(embeddings, metadata_list)):
                 norm_embedding = FaceEmbeddingProcessor.normalize_embedding(embedding)
                 if norm_embedding is None:
-                    logger.warning(f"Skipping embedding {i} — normalization failed")
                     continue
 
-                if poses and i < len(poses):
-                    pose = poses[i]
-                else:
-                    pose = poses_default[i] if i < len(poses_default) else f'angle_{i}'
+                # Automatic pose labeling
+                angles = meta['pose_angles']
+                pose_label = self._get_pose_label(angles['yaw'], angles['pitch'], angles['roll'])
+                
+                # Quality details
+                q = meta['quality']
 
                 embedding_record = {
                     'enrollment_id': enrollment_id,
                     'student_id': student_id,
-                    'pose': pose,
+                    'pose': pose_label,
                     'embedding_model': 'insightface_arcface_buffalo_l',
                     'face_embedding': str(norm_embedding.tolist()),
-                    'face_quality': round(min(max(float(quality), 0.0), 9.999), 3),
-                    'metadata_json': {'angle_index': i},
+                    'face_quality': round(float(q['overall_score']), 3),
+                    'blur_score': round(float(q.get('blur_score', 0.0)), 3),
+                    'brightness_score': round(float(q.get('brightness_score', 0.0)), 3),
+                    'yaw_angle': round(float(angles['yaw']), 2),
+                    'pitch_angle': round(float(angles['pitch']), 2),
+                    'roll_angle': round(float(angles['roll']), 2),
+                    'detection_score': round(float(meta['detection_score']), 4),
+                    'metadata_json': {'angle_index': i, 'pose_details': angles},
                     'created_at': datetime.now().isoformat(),
                     'updated_at': datetime.now().isoformat()
                 }
@@ -560,9 +674,9 @@ class AdvancedFaceEmbeddingManager:
                     .table('student_face_embeddings').insert(embedding_record).execute()
 
                 if not result.data:
-                    logger.error(f"❌ Insert failed for pose={pose}: {result}")
+                    logger.error(f"❌ Insert failed for pose={pose_label}: {result}")
                 else:
-                    logger.info(f"✅ Inserted embedding pose={pose}, id={result.data[0]['id']}")
+                    logger.info(f"✅ Inserted embedding pose={pose_label}, id={result.data[0]['id']}")
 
             # Step 4: Invalidate cache
             if self.cache_manager:
@@ -574,7 +688,7 @@ class AdvancedFaceEmbeddingManager:
         except Exception as e:
             import traceback
             traceback.print_exc()
-            logger.error(f"Error in save_multiple_embeddings (new schema): {e}")
+            logger.error(f"Error in save_multiple_embeddings (advanced): {e}")
             return False
 
     def get_all_embeddings_for_student(self, student_id: str) -> List[np.ndarray]:

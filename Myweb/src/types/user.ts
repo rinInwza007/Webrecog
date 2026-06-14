@@ -9,7 +9,7 @@
  * ---------------------------------------------------------------
  */
 
-import type { UserRole, EnrollmentType } from './common.ts'
+import type { UserRole, EnrollmentType, UserStatus } from './common.ts'
 
 export interface User {
   user_id: string        // uuid PK
@@ -20,17 +20,43 @@ export interface User {
   password_hash: string
   created_at: string     // timestamptz → ISO string
   updated_at: string
+  is_active: boolean
+  status: UserStatus
+  student_class: string | null
+  academic_year: string | null
+  face_enrolled: boolean
+  last_face_seen_at: string | null
+  last_login_at: string | null
+  failed_login_count: number
+  password_changed_at: string | null
 }
 
 export interface StudentFaceEnrollment {
   id: number
   student_id: string     // FK → users.school_id
-  enrollment_type: EnrollmentType
+  enrollment_type: string
   system_version: string
   motion_optimized: boolean
   is_active: boolean
   created_at: string
   updated_at: string
+  total_embeddings: number
+  original_count: number
+  augmented_count: number
+  avg_quality_score: number | null
+  avg_detection_score: number | null
+  enrollment_quality: string
+  camera_id: string | null
+  capture_distance_m: number | null
+  lighting_condition: string | null
+  embedding_model: string | null
+  det_size: string | null
+  padding_ratio: number | null
+  last_recognized_at: string | null
+  recognition_count: number
+  failed_count: number
+  needs_reenroll: boolean
+  enrolled_by: string | null
 }
 
 export interface StudentFaceEmbedding {
@@ -50,6 +76,14 @@ export interface StudentFaceEmbedding {
   metadata_json: Record<string, any> | null
   created_at: string
   updated_at: string
+  is_augmented: boolean
+  augmentation_type: string | null
+  augmentation_params: Record<string, any> | null
+  simulated_distance_m: number | null
+  source_embedding_id: number | null
+  detection_score: number | null
+  embedding_norm: number | null
+  is_active: boolean
 }
 
 // --- Derived / View types ---

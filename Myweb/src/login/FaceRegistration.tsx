@@ -46,13 +46,13 @@ const POSES = [
 
 // ========== [เพิ่ม] Threshold มุมหน้า ==========
 // ratio = (nose.x - leftEar.x) / (rightEar.x - leftEar.x)
-// หน้าตรง: 0.35 - 0.65
-// หันซ้าย: < 0.22 
-// หันขวา: > 0.78
+// หน้าตรง: 0.40 - 0.60
+// หันซ้าย (มองไปทางซ้ายของตัวเอง): > 0.70 
+// หันขวา (มองไปทางขวาของตัวเอง): < 0.30
 const POSE_THRESHOLDS = {
-  front: { min: 0.35, max: 0.65 },
-  left:  { min: 0.78, max: 1.0  },  
-  right: { min: 0.0,  max: 0.22 } 
+  front: { min: 0.40, max: 0.60 },
+  left:  { min: 0.70, max: 1.0  },  
+  right: { min: 0.0,  max: 0.30 } 
 }
 // ================================================
 
@@ -86,7 +86,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
   //delay for testing
   const [poseHoldProgress, setPoseHoldProgress] = useState<number>(0) // 0-100
   const poseHoldStartRef = useRef<number | null>(null) // เวลาที่เริ่มจับ Pose
-  const HOLD_DURATION = 3000 // 3 วินาที
+  const HOLD_DURATION = 2000 // ลดลงเหลือ 2 วินาทีเพื่อให้ไม่เกร็งจนเกินไป
 
 
   const { user } = useAuth()
@@ -161,7 +161,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
 
         const yawRatio   = (nose.x - leftEar.x) / (rightEar.x - leftEar.x)
         const pitchRatio = (nose.y - forehead.y) / (chin.y - forehead.y)
-        const isPitchOk = pitchRatio >= 0.44 && pitchRatio <= 0.60
+        const isPitchOk = pitchRatio >= 0.42 && pitchRatio <= 0.62 // ขยายช่วงเล็กน้อย
 
         const step = currentStepRef.current
         const pose = POSES[step]
@@ -199,7 +199,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
           setPoseReady(false)
 
           if (!isPitchOk) {
-            setPoseGuide(pitchRatio > 0.44 ? 'กรุณาเงยหน้าขึ้น' : 'กรุณาก้มหน้าลง')
+            setPoseGuide(pitchRatio > 0.42 ? 'กรุณาเงยหน้าขึ้น' : 'กรุณาก้มหน้าลง')
           } else {
             if (pose.id === 'front') {
               setPoseGuide('กรุณาหันหน้าตรงเข้ากล้อง')
@@ -233,7 +233,11 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: 'user' }
+        video: { 
+          width: { ideal: 1280 }, 
+          height: { ideal: 720 }, 
+          facingMode: 'user' 
+        }
       })
       streamRef.current = stream
       if (videoRef.current) {
@@ -261,8 +265,15 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
   const context = canvas.getContext('2d')
   if (!context) return
 
+  // ตั้งค่า Canvas ให้มีคุณภาพสูง
   canvas.width = video.videoWidth
   canvas.height = video.videoHeight
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+
+  // Mirror image เพื่อให้ตรงกับที่ผู้ใช้เห็นใน UI
+  context.translate(canvas.width, 0)
+  context.scale(-1, 1)
   context.drawImage(video, 0, 0, canvas.width, canvas.height)
 
   canvas.toBlob((blob) => {
@@ -291,9 +302,9 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
       // reset lock หลังจาก state update เสร็จ
       setTimeout(() => {
         capturedRef.current = false
-      }, 500)
+      }, 800) // เพิ่ม delay เล็กน้อยก่อนท่าถัดไป
     }
-  }, 'image/jpeg', 0.9)
+  }, 'image/jpeg', 1.0) // เพิ่มคุณภาพ JPEG เป็นสูงสุด
 }, [])
 
   const retakePhoto = (index: number) => {

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, FC } from 'react'
 import Swal from 'sweetalert2'
 import config from './config'
-import type { AttendanceSession } from '@/types'
+import type { AttendanceSession, SessionWithClass } from '@/types'
 
 interface SpoofEvent {
   image_b64: string
@@ -10,7 +10,7 @@ interface SpoofEvent {
 }
 
 interface LiveVideoStreamProps {
-  currentSession: (AttendanceSession & { classes?: any }) | null
+  currentSession: (AttendanceSession & { classes?: any }) | null // Keep 'classes' as optional extra for now
   isSessionActive: boolean
   onManualCapture: (blob: Blob) => Promise<void>
   motionStats?: {

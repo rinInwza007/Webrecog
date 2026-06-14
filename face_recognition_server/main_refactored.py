@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import uuid
 import asyncio
 from datetime import timezone
+from logging.handlers import RotatingFileHandler
 
 
 # Import from layers
@@ -58,7 +59,17 @@ logger.info(f"⏱️ MOTION_COOLDOWN_SECONDS = {MOTION_COOLDOWN_SECONDS}")
 
 
 # Logging
-logging.basicConfig(level=logging.INFO)
+log_handler = RotatingFileHandler(
+    'logs/app.log', 
+    maxBytes=10*1024*1024, 
+    backupCount=5,
+    encoding='utf-8'
+)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+    handlers=[log_handler, logging.StreamHandler()]
+)
 logger = logging.getLogger(__name__)
 
 # FastAPI App
@@ -181,7 +192,7 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
-@app.post("/api/session/start-motion-detection")
+@app.post("/api/session/start-motion-detection") #เปิดเซสชันตรวจจับการเคลื่อนไหว
 async def start_motion_detection(
     class_id: str = Form(...),
     teacher_email: str = Form(...),
@@ -192,7 +203,7 @@ async def start_motion_detection(
 ):
     """Start motion detection session"""
     try:
-        # 1. Fetch limits from classes table
+        # 1. Fetch limits from classes table ทำการดึงข้อมูลจำกัดจำนวนเซสชันจากตาราง classes เพื่อเช็คว่าห้องเรียนนี้สามารถสร้างเซสชันได้อีกหรือไม่
         class_result = supabase_manager.get_client()\
             .table('classes')\
             .select('total_sessions, max_checkins_per_week')\
@@ -203,7 +214,7 @@ async def start_motion_detection(
             total_limit = class_result.data[0].get('total_sessions')
             weekly_limit = class_result.data[0].get('max_checkins_per_week')
             
-            # 2. Check total session limit
+            # 2. Check total session limit ถ้ามีการจำกัดจำนวนเซสชันทั้งหมด ให้เช็คว่าห้องเรียนนี้สร้างเซสชันไปแล้วกี่เซสชัน โดยนับเฉพาะเซสชันที่มีสถานะ active หรือ ended
             if total_limit:
                 total_sessions_result = supabase_manager.get_client()\
                     .table('attendance_sessions')\
@@ -219,7 +230,7 @@ async def start_motion_detection(
                         detail=f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว ({total_count}/{total_limit})"
                     )
             
-            # 3. Check weekly session limit
+            # 3. Check weekly session limit ถ้ามีการจำกัดจำนวนเซสชันต่อสัปดาห์ ให้เช็คว่าห้องเรียนนี้สร้างเซสชันไปแล้วกี่เซสชันในสัปดาห์นี้ โดยนับเฉพาะเซสชันที่มีสถานะ active หรือ ended และเริ่มต้นในสัปดาห์นี้
             if weekly_limit:
                 now_utc = datetime.now(timezone.utc)
                 week_start = (now_utc - timedelta(days=now_utc.weekday()))\
@@ -240,8 +251,8 @@ async def start_motion_detection(
                         detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
                     )
 
-        session_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
+        session_id = str(uuid.uuid4()) # สร้าง session_id ใหม่ด้วย UUID เพื่อความปลอดภัยและไม่ซ้ำกัน
+        now = datetime.now(timezone.utc) # ใช้เวลาปัจจุบันเป็น UTC เพื่อความสอดคล้องกับฐานข้อมูลและการคำนวณเวลาในอนาคต
         
         session_config = {
             'class_id': class_id,
@@ -254,7 +265,7 @@ async def start_motion_detection(
         }
         
         # Create session in service
-        motion_session_manager.create_session(session_id, session_config)
+        motion_session_manager.create_session(session_id, session_config) # สร้างเซสชันใน memory เพื่อให้ระบบสามารถจัดการเซสชันได้อย่างรวดเร็วและไม่ต้องพึ่งพาฐานข้อมูลในการตรวจสอบสถานะเซสชัน
         
         # Save to database (with error handling for network issues)
         session_data = {
@@ -269,7 +280,7 @@ async def start_motion_detection(
         
         db_save_success = False
         try:
-            supabase_manager.get_client().table('attendance_sessions').insert(session_data).execute()
+            supabase_manager.get_client().table('attendance_sessions').insert(session_data).execute() # บันทึกเซสชันลงในฐานข้อมูลเพื่อให้สามารถติดตามและจัดการเซสชันได้อย่างมีประสิทธิภาพ และเพื่อให้ข้อมูลเซสชันถูกเก็บรักษาอย่างปลอดภัยในกรณีที่เซิร์ฟเวอร์เกิดปัญหาหรือรีสตาร์ท
             db_save_success = True
             logger.info(f"✅ Motion session saved to database: {session_id}")
         except Exception as db_error:
@@ -320,7 +331,7 @@ async def process_motion_snapshot(
 ):
     """Process motion-triggered snapshot"""
     try:
-        capture_time = datetime.now().isoformat()
+        capture_time = datetime.now(timezone.utc).isoformat()
         
         # Check if snapshot is allowed
         can_capture = motion_session_manager.can_take_snapshot(
@@ -437,7 +448,7 @@ async def manual_capture_motion(
         session_data = session_result.data
         phase = motion_processor.get_phase(0)
         config = motion_processor.get_config(phase)
-        capture_time = datetime.now().isoformat()
+        capture_time = datetime.now(timezone.utc).isoformat()
 
         image_bytes = await image.read()
 
@@ -496,7 +507,7 @@ async def enroll_face_advanced(
         
         embedding_manager = AdvancedFaceEmbeddingManager(supabase_manager, cache_manager)
         all_encodings = []
-        quality_scores = []
+        metadata_list = []
         image_analysis = []
         
         for idx, image_file in enumerate(images):
@@ -509,55 +520,27 @@ async def enroll_face_advanced(
                 
                 image_array = np.array(image)
                 
-                # Detect faces
-                face_locations, _ = FaceEmbeddingProcessor.detect_faces_in_image(image_array, model="hog")
+                # Comprehensive analysis using the new method
+                analysis = FaceEmbeddingProcessor.analyze_face_for_enrollment(image_array)
                 
-                if not face_locations:
-                    image_analysis.append({'index': idx+1, 'status': 'no_face'})
+                if not analysis:
+                    image_analysis.append({'index': idx+1, 'status': 'no_face_detected'})
                     continue
                 
-                if len(face_locations) > 1:
-                    face_locations = sorted(face_locations, 
-                                          key=lambda loc: (loc[2]-loc[0])*(loc[1]-loc[3]), 
-                                          reverse=True)
+                quality_score = analysis['quality']['overall_score']
                 
-                # Extract encodings with high quality
-                encodings = FaceEmbeddingProcessor.extract_face_encodings(
-                    image_array, face_locations[:1], num_jitters=3
-                )
+                # Store all detected values regardless of quality for now (as requested)
+                all_encodings.append(analysis['embedding'])
+                metadata_list.append(analysis)
                 
-                if not encodings:
-                    image_analysis.append({'index': idx+1, 'status': 'no_encoding'})
-                    continue
-                
-                raw_encoding = encodings[0]
-                norm_encoding = FaceEmbeddingProcessor.normalize_embedding(raw_encoding)
-                
-                if norm_encoding is None:
-                    image_analysis.append({'index': idx+1, 'status': 'normalization_failed'})
-                    continue
-                
-                # Calculate quality
-                quality_info = FaceEmbeddingProcessor.calculate_face_quality(image_array, face_locations[0])
-                quality_score = quality_info['overall_score']
-                
-                if quality_score >= min_quality_threshold:
-                    all_encodings.append(norm_encoding)
-                    quality_scores.append(quality_score)
-                    image_analysis.append({
-                        'index': idx+1,
-                        'status': 'success',
-                        'quality_score': quality_score,
-                        'quality_details': quality_info
-                    })
-                    logger.info(f"✅ Image {idx+1} enrolled (quality: {quality_score:.3f})")
-                else:
-                    image_analysis.append({
-                        'index': idx+1,
-                        'status': 'low_quality',
-                        'quality_score': quality_score,
-                        'threshold': min_quality_threshold
-                    })
+                image_analysis.append({
+                    'index': idx+1,
+                    'status': 'success',
+                    'quality_score': round(quality_score, 3),
+                    'detection_score': round(analysis['detection_score'], 4),
+                    'pose': analysis['pose_angles']
+                })
+                logger.info(f"✅ Image {idx+1} analyzed (quality: {quality_score:.3f}, det_score: {analysis['detection_score']:.4f})")
                 
             except Exception as e:
                 logger.error(f"Error processing image {idx+1}: {e}")
@@ -565,25 +548,24 @@ async def enroll_face_advanced(
                 continue
         
         if not all_encodings:
-            raise HTTPException(status_code=400, detail="No valid face encodings generated")
+            raise HTTPException(status_code=400, detail="No valid face encodings generated from provided images")
         
-        # Save embeddings
+        # Save embeddings with detailed metadata
         success = embedding_manager.save_multiple_embeddings(
             student_id,
             all_encodings,
-            quality_scores,
-            method=enrollment_method,
-            poses=poses or ['front', 'left', 'right']
+            metadata_list,
+            method=enrollment_method
         )
         
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to save embeddings")
+            raise HTTPException(status_code=500, detail="Failed to save embeddings to database")
         
         # Clear cache
         cache_manager.invalidate_student_cache(student_id)
         
         success_count = len(all_encodings)
-        avg_quality = float(np.mean(quality_scores))
+        avg_quality = float(np.mean([m['quality']['overall_score'] for m in metadata_list]))
         
         logger.info(f"✅ Advanced enrollment complete: {success_count} images, avg quality: {avg_quality:.3f}")
         
@@ -594,10 +576,9 @@ async def enroll_face_advanced(
             "successful_encodings": success_count,
             "enrollment_method": enrollment_method,
             "quality_statistics": {
-                "average_quality": avg_quality,
-                "quality_std": float(np.std(quality_scores)) if quality_scores else 0,
-                "min_quality": float(min(quality_scores)) if quality_scores else 0,
-                "max_quality": float(max(quality_scores)) if quality_scores else 0
+                "average_quality": round(avg_quality, 3),
+                "min_quality": round(float(min([m['quality']['overall_score'] for m in metadata_list])), 3),
+                "max_quality": round(float(max([m['quality']['overall_score'] for m in metadata_list])), 3)
             },
             "image_analysis": image_analysis,
             "timestamp": datetime.now().isoformat()
@@ -1060,7 +1041,39 @@ async def motion_manual_checkin(
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Server Startup ====================
-
+@app.get("/api/session/{session_id}/recognition-stats")
+async def get_recognition_stats(session_id: str):
+    """Get recognition statistics for a session"""
+    try:
+        result = supabase_manager.get_client()\
+            .table('session_recognition_stats')\
+            .select('*')\
+            .eq('session_id', session_id)\
+            .execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "session_id": session_id,
+                "stats": {
+                    "total_detections": 0,
+                    "total_recognized": 0,
+                    "total_duplicate": 0,
+                    "total_unrecognized": 0,
+                    "duplicate_detail": []
+                }
+            }
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "stats": result.data[0]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching recognition stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 if __name__ == "__main__":
     import uvicorn
     

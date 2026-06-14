@@ -1,19 +1,19 @@
 import { useState, useEffect, FC } from 'react'
 import { supabase } from './supabaseClient'
-import type { Class, AttendanceSession, AttendanceRecord } from '@/types'
+import type { Class, AttendanceSession, AttendanceRecord, MotionCapture } from '@/types'
 import Swal from 'sweetalert2'
 import LiveVideoStream from './LiveVideoStream'
 
 interface ClassDetailViewProps {
   classData: Class
   onBack: () => void
-  currentSession: any | null
+  currentSession: AttendanceSession | null
   onStartAttendance: (cls: Class) => void
   onShowSettings: (cls: Class) => void
   onManualCapture: (imageBlob: Blob) => Promise<void>
-  motionStats: any
+  motionStats: any // Keep as any for now since it might be a custom stats object
   onSpoofDetected: (event: SpoofEvent) => void
-  attendanceRecords: any[]
+  attendanceRecords: AttendanceRecord[]
   spoofEvents: SpoofEvent[]
   onShowSpoofImage: (event: SpoofEvent) => void
   onEndSession: (sessionId: string) => Promise<void>
@@ -106,6 +106,12 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
       return () => clearInterval(interval)
     }
   }, [classData])
+  // ดึงสถิติการจดจำใบหน้าทุกครั้งที่เปลี่ยน session แค่ 1 รอบตอนเข้า view นี้มา
+  useEffect(() => {
+  if (selectedSessionId) {
+    fetchRecognitionStats(selectedSessionId)
+    }
+  }, [selectedSessionId])
 
   const fetchClassAttendanceData = async (silent = false) => {
     try {
@@ -335,6 +341,34 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
 
   const [showExportModal, setShowExportModal] = useState(false)
 
+  //สถิติจดจำใบหน้า
+  const [recognitionStats, setRecognitionStats] = useState<any>(null)
+  const [recognitionStatsLoading, setRecognitionStatsLoading] = useState(false)
+  
+
+  const fetchRecognitionStats = async (sessionId: string) => {
+    setRecognitionStatsLoading(true)
+    try {
+      const backendUrl = import.meta.env.VITE_FASTAPI_URL
+      if (!backendUrl) {
+        console.error('VITE_FASTAPI_URL is not defined')
+        return
+      }
+      const response = await fetch(`${backendUrl}/api/session/${sessionId}/recognition-stats`)
+      if (!response.ok) {
+        console.error('Recognition stats request failed:', response.status)
+        return
+      }
+      const data = await response.json()
+      if (data.success) {
+        setRecognitionStats(data.stats)
+      }
+    } catch (error) {
+      console.error('Error fetching recognition stats:', error)
+    } finally {
+      setRecognitionStatsLoading(false)
+    }
+  }
   const downloadCSV = (csvContent: string, prefix: string) => {
     const BOM = '\uFEFF'
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -546,17 +580,29 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                 <div className="flex flex-wrap gap-4">
                   <div className="flex items-center space-x-2 text-sm">
                     <span className="text-gray-400">🟢 เริ่ม:</span>
-                    <span className="font-semibold text-gray-700">
-                      {currentSession.start_time?.split('T')[1]?.slice(0, 5) || '-'}
-                    </span>
+                      <span className="font-semibold text-gray-700">
+                        {currentSession.start_time 
+                          ? new Date(new Date(currentSession.start_time).getTime() + 7 * 60 * 60 * 1000)
+                              .toISOString()
+                              .split('T')[1]
+                              .slice(0, 5) 
+                          : '-'}
+                      </span>
                   </div>
                   <div className="flex items-center space-x-2 text-sm">
                     <span className="text-gray-400">⚠️ สายหลัง:</span>
-                    <span className="font-semibold text-yellow-600">
-                      {currentSession.start_time && currentSession.on_time_limit_minutes
-                        ? new Date(new Date(currentSession.start_time).getTime() + currentSession.on_time_limit_minutes * 60000).toISOString().split('T')[1]?.slice(0, 5)
-                        : '-'}
-                    </span>
+                      <span className="font-semibold text-yellow-600">
+                        {currentSession.start_time && currentSession.on_time_limit_minutes
+                          ? new Date(
+                              new Date(currentSession.start_time).getTime() + 
+                              (currentSession.on_time_limit_minutes * 60000) + 
+                              (7 * 60 * 60 * 1000)
+                            )
+                              .toISOString()
+                              .split('T')[1]
+                              ?.slice(0, 5)
+                          : '-'}
+                      </span>
                   </div>
                   <button
                     onClick={() => onEndSession(currentSession.id)}
@@ -647,7 +693,14 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                               }`}>
                                 {record.status === 'present' ? 'มา' : 'สาย'}
                               </span>
-                              <span className="text-[9px] text-gray-400 shrink-0">{record.check_in_time?.split('T')[1]?.slice(0, 5)}</span>
+                              <span className="text-[9px] text-gray-400 shrink-0">
+                                  {record.check_in_time 
+                                    ? new Date(new Date(record.check_in_time).getTime() + 7 * 60 * 60 * 1000)
+                                        .toISOString()
+                                        .split('T')[1]
+                                        ?.slice(0, 5) 
+                                    : '-'}
+                                </span>
                               
                               <div className="flex-1 flex flex-col space-y-0.5">
                                 <span className="text-[9px] text-gray-400 font-medium">
@@ -1103,7 +1156,10 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                       <select 
                         className="apple-input w-full py-4 pl-4 pr-10 appearance-none bg-no-repeat bg-[right_1rem_center] cursor-pointer shadow-sm hover:shadow-md transition-shadow"
                         value={selectedSessionId || ''}
-                        onChange={(e) => setSelectedSessionId(e.target.value)}
+                        onChange={(e) => {
+                          setSelectedSessionId(e.target.value)
+                          fetchRecognitionStats(e.target.value)
+                        }}
                       >
                         {attendanceData.sessions.slice(0, 7).map((session, idx) => (
                           <option key={session.id} value={session.id}>
@@ -1134,6 +1190,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                 </div>
 
                 {selectedSessionId ? (
+                  <>
                   <div className="space-y-6">
                     {/* Session Summary Card */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1242,6 +1299,68 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                       </table>
                     </div>
                   </div>
+{/* วิเคราะห์สถิติ */}
+<div className="bg-gray-50/40 rounded-2xl p-5 border border-gray-100">
+  <h3 className="text-base font-bold text-gray-700 uppercase tracking-widest mb-4">สถิติการจดจำใบหน้า</h3>
+
+  {recognitionStatsLoading ? (
+    <div className="text-center py-6">
+      <div className="animate-spin h-6 w-6 border-2 border-gray-300 border-t-transparent rounded-full mx-auto mb-2"></div>
+      <p className="text-gray-400 text-sm">กำลังโหลด...</p>
+    </div>
+  ) : recognitionStats ? (
+    <div className="space-y-4">
+      {/* ตัวเลขสรุป */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จับใบหน้าได้</p>
+          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_detections}</p>
+          <p className="text-xs text-gray-400 mt-0.5">ครั้ง</p>
+        </div>
+        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำได้</p>
+          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_recognized}</p>
+          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (บันทึกใหม่)</p>
+        </div>
+        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำซ้ำ</p>
+          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_duplicate}</p>
+          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (เช็คชื่อแล้ว)</p>
+        </div>
+        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำไม่ได้</p>
+          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_unrecognized}</p>
+          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (ไม่ตรงในระบบ)</p>
+        </div>
+      </div>
+
+      {/* รายชื่อจดจำซ้ำ */}
+      {recognitionStats.duplicate_detail && recognitionStats.duplicate_detail.length > 0 && (
+        <div>
+          <h4 className="text-sm font-bold text-gray-700 uppercase tracking-widest mb-2">รายชื่อที่ถูกจดจำซ้ำ</h4>
+          <div className="space-y-1.5">
+            {recognitionStats.duplicate_detail.map((item: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between p-3 bg-white/60 rounded-lg border border-gray-100">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">{item.name}</p>
+                  <p className="text-xs text-gray-400">{item.student_id}</p>
+                </div>
+                <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2.5 py-1 rounded-full">
+                  ซ้ำ {item.count} ครั้ง
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="text-center py-6 text-gray-400">
+      <p className="text-xs">ยังไม่มีข้อมูลสถิติสำหรับคาบเรียนนี้</p>
+    </div>
+  )}
+</div>
+                  </>
                 ) : (
                   <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
                     <p className="text-gray-400">กรุณาเลือกคาบเรียนเพื่อดูข้อมูล</p>
@@ -1252,7 +1371,6 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
           </div>
         </div>
       </div>
-
       {/* Export Modal */}
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
