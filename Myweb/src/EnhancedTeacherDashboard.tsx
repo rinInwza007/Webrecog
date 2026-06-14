@@ -62,7 +62,9 @@ const EnhancedTeacherDashboard: FC = () => {
   const [newClass, setNewClass] = useState({
     subject_name: '',
     description: '',
-    scheduleSlots: [{ day: 'จันทร์', startTime: '', endTime: '' }],
+    day: 'จันทร์',
+    startTime: '',
+    endTime: '',
     total_sessions: 12,
     max_checkins_per_week: 1
   })
