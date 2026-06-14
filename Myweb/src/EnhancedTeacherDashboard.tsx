@@ -20,8 +20,118 @@ const TIMES = Array.from({ length: 10 }, (_, i) => {
   const hour = i + 8
   return `${hour.toString().padStart(2, '0')}:00`
 })
+const MultiClassCodeCard: FC<{ classCode: string; className: string }> = ({ classCode, className }) => {
+  const [copied, setCopied] = useState(false)
+  const [copiedMsg, setCopiedMsg] = useState(false)
 
+  const copyToClipboard = async (text: string, type: 'code' | 'msg') => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    if (type === 'code') {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } else {
+      setCopiedMsg(true)
+      setTimeout(() => setCopiedMsg(false), 2000)
+    }
+  }
+
+  const shareMessage = `🎓 เข้าร่วมคลาสเรียน "${className}"\n\n📋 รหัสเข้าร่วม: ${classCode}\n\n📱 วิธีการเข้าร่วม:\n1. เข้าสู่ระบบในแอป\n2. คลิก "เข้าร่วมวิชา"\n3. กรอกรหัส: ${classCode}\n\n🔗 ระบบเช็คชื่อด้วย Face Recognition`
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `เข้าร่วมคลาส ${className}`, text: shareMessage })
+      } catch (err: any) {
+        if (err.name !== 'AbortError') copyToClipboard(shareMessage, 'msg')
+      }
+    } else {
+      copyToClipboard(shareMessage, 'msg')
+    }
+  }
+
+  return (
+    <div className="border border-gray-100 rounded-lg p-4">
+      <h4 className="text-base font-bold text-gray-900 mb-3">{className}</h4>
+
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-3">
+        <p className="text-sm text-blue-600 mb-2">รหัสเข้าร่วมคลาส</p>
+        <div className="text-3xl font-bold text-blue-800 font-mono tracking-wider mb-3">
+          {classCode}
+        </div>
+        <button
+          onClick={() => copyToClipboard(classCode, 'code')}
+          className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            copied ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+          }`}
+        >
+          {copied ? (
+            <>
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              คัดลอกแล้ว
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              คัดลอกรหัส
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="flex space-x-2">
+        <button
+          onClick={handleShare}
+          className="flex-1 bg-green-600 text-white py-2 px-3 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-1 text-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+          </svg>
+          <span>แชร์รหัส</span>
+        </button>
+        <button
+          onClick={() => copyToClipboard(shareMessage, 'msg')}
+          className={`flex-1 py-2 px-3 rounded-lg transition-colors flex items-center justify-center space-x-1 text-sm ${
+            copiedMsg ? 'bg-green-100 text-green-800' : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <span>{copiedMsg ? 'คัดลอกแล้ว' : 'คัดลอกข้อความ'}</span>
+        </button>
+      </div>
+    </div>
+  )
+}
 const EnhancedTeacherDashboard: FC = () => {
+  const [weeklySessionCount, setWeeklySessionCount] = useState(0)
+  const fetchWeeklySessionCount = async (classId: string) => {
+    const startOfWeek = new Date()
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+    startOfWeek.setHours(0, 0, 0, 0)
+
+    const { count } = await supabase
+      .from('attendance_sessions')
+      .select('id', { count: 'exact' })
+      .eq('class_id', classId)
+      .gte('start_time', startOfWeek.toISOString())
+
+    setWeeklySessionCount(count || 0)
+  }
   const { user, signOut } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
   const [sessions, setSessions] = useState<AttendanceSession[]>([])
@@ -46,6 +156,7 @@ const EnhancedTeacherDashboard: FC = () => {
   const [logsLoading, setLogsLoading] = useState(false)
   const [selectedClassForSession, setSelectedClassForSession] = useState<Class | null>(null)
   const [showSessionConfigModal, setShowSessionConfigModal] = useState(false)
+  const [showMultiClassCodeModal, setShowMultiClassCodeModal] = useState<{code: string, name: string}[] | null>(null)
   
   //spoof
   const [spoofEvents, setSpoofEvents] = useState<SpoofEvent[]>([])
@@ -59,15 +170,15 @@ const EnhancedTeacherDashboard: FC = () => {
   }
   
   // Form states
-  const [newClass, setNewClass] = useState({
-    subject_name: '',
-    description: '',
-    day: 'จันทร์',
-    startTime: '',
-    endTime: '',
-    total_sessions: 12,
-    max_checkins_per_week: 1
-  })
+const [newClass, setNewClass] = useState({
+  subject_name: '',
+  description: '',
+  total_sessions: 12,
+  max_checkins_per_week: 1,
+  sections: [
+    { scheduleSlots: [{ day: 'จันทร์', startTime: '', endTime: '' }] }
+  ]
+})
   const [sessionConfig, setSessionConfig] = useState({
     duration_hours: 2,
     motion_threshold: 0.1,
@@ -395,74 +506,102 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
     return result
   }
 
-  const createClass = async () => {
-    if (!newClass.subject_name.trim()) {
-      Swal.fire({
-        icon: 'error',
-        title: 'เกิดข้อผิดพลาด',
-        text: 'กรุณากรอกชื่อวิชา'
-      })
+const createClass = async () => {
+  if (!newClass.subject_name.trim()) { /* validate */ return }
+
+  // validate แต่ละ section
+// validate total_sessions และ max_checkins_per_week
+  if (!newClass.total_sessions || newClass.total_sessions < 1) {
+    Swal.fire({ icon: 'error', title: 'จำนวนคาบไม่ถูกต้อง', text: 'กรุณากรอกจำนวนคาบทั้งหมดอย่างน้อย 1 คาบ' })
+    return
+  }
+
+  if (!newClass.max_checkins_per_week || newClass.max_checkins_per_week < 1) {
+    Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อไม่ถูกต้อง', text: 'กรุณากรอกจำนวนเช็คชื่อต่อสัปดาห์อย่างน้อย 1 ครั้ง' })
+    return
+  }
+
+  // เช็คว่าทุก section มีจำนวนวันเรียนเท่ากัน
+  const slotCounts = newClass.sections.map(s => s.scheduleSlots.length)
+  const allSame = slotCounts.every(c => c === slotCounts[0])
+  if (!allSame) {
+    Swal.fire({
+      icon: 'error',
+      title: 'จำนวนวันเรียนไม่เท่ากัน',
+      text: `ทุก Section ต้องมีจำนวนวันเรียนเท่ากัน (${slotCounts.map((c, i) => `Section ${i + 1}: ${c} วัน`).join(', ')})`
+    })
+    return
+  }
+  for (let si = 0; si < newClass.sections.length; si++) {
+    const section = newClass.sections[si]
+    const slots = section.scheduleSlots
+
+    // เช็คว่ากรอกเวลาครบหรือยัง
+    const invalid = slots.some(s => !s.startTime || !s.endTime)
+    if (invalid) {
+      Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด',
+        text: `กรุณาเลือกเวลาเรียนให้ครบถ้วนใน Section ${si + 1}` })
       return
     }
 
-    if (!newClass.startTime || !newClass.endTime) {
-      Swal.fire({
-        icon: 'error',
-        title: 'เกิดข้อผิดพลาด',
-        text: 'กรุณาเลือกเวลาเรียนให้ครบถ้วน'
-      })
+    // เช็ค slotCount
+    const slotCount = slots.length
+    if (newClass.total_sessions < slotCount) {
+      Swal.fire({ icon: 'error', title: 'จำนวนคาบไม่ถูกต้อง',
+        text: `Section ${si + 1} มี ${slotCount} วันเรียน จำนวนคาบทั้งหมดต้องมีอย่างน้อย ${slotCount} คาบ` })
+      return
+    }
+    if (newClass.max_checkins_per_week < slotCount) {
+      Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อต่อสัปดาห์ไม่ถูกต้อง',
+        text: `Section ${si + 1} มี ${slotCount} วันเรียน เช็คชื่อได้ต่อสัปดาห์ต้องมีอย่างน้อย ${slotCount} ครั้ง` })
       return
     }
 
-    setActionLoading(true)
+  }
 
-    try {
-      const classCode = generateClassCode()
-      
-      const classData = {
-        subject_name: newClass.subject_name.trim(),
+  setActionLoading(true)
+  try {
+    const suffix = newClass.sections.length > 1
+    const insertData = newClass.sections.map((section, idx) => {
+      const name = suffix
+        ? `${newClass.subject_name.trim()}[${idx + 1}]`
+        : newClass.subject_name.trim()
+      const schedule = section.scheduleSlots
+        .map(s => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')
+      return {
+        subject_name: name,
         description: newClass.description?.trim() || null,
-        schedule: `${newClass.day} ${newClass.startTime}-${newClass.endTime}`,
+        schedule,
         total_sessions: newClass.total_sessions || null,
         max_checkins_per_week: newClass.max_checkins_per_week || null,
         teacher_id: user?.id,
         teacher_email: user?.email,
-        class_code: classCode
+        class_code: generateClassCode()
       }
+    })
 
-      const { error } = await supabase
-        .from('classes')
-        .insert([classData])
+    const { error } = await supabase.from('classes').insert(insertData)
+    if (error) throw error
 
-      if (error) throw error
-
-      setShowClassCodeModal({
-        code: classCode,
-        name: newClass.subject_name
-      })
-      
-      setShowCreateModal(false)
-      setNewClass({ 
-        subject_name: '', 
-        description: '', 
-        day: 'จันทร์',
-        startTime: '09:00',
-        endTime: '12:00',
-        total_sessions: 12,
-        max_checkins_per_week: 1
-      })
-      fetchTeacherData()
-    } catch (error: any) {
-      console.error('Error creating class:', error)
-      Swal.fire({
-        icon: 'error',
-        title: 'เกิดข้อผิดพลาด',
-        text: 'เกิดข้อผิดพลาดในการสร้างคลาสเรียน: ' + error.message
-      })
-    } finally {
-      setActionLoading(false)
-    }
+    // แสดง code ของ section แรก (หรือจะ loop แสดงทั้งหมดก็ได้)
+    if (insertData.length === 1) {
+          setShowClassCodeModal({ code: insertData[0].class_code, name: insertData[0].subject_name })
+        } else {
+          setShowMultiClassCodeModal(insertData.map(cls => ({
+            code: cls.class_code,
+            name: cls.subject_name
+          })))
+        }
+    setShowCreateModal(false)
+    setNewClass({ subject_name:'', description:'', total_sessions:12,
+      max_checkins_per_week:1, sections:[{scheduleSlots:[{day:'จันทร์',startTime:'',endTime:''}]}] })
+    fetchTeacherData()
+  } catch (error: any) {
+    Swal.fire({ icon:'error', title:'เกิดข้อผิดพลาด', text: error.message })
+  } finally {
+    setActionLoading(false)
   }
+}
 
   const startMotionDetectionSession = async (classId: string | boolean) => {
     if (typeof classId !== 'string') return
@@ -537,7 +676,7 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
       duration_hours: cls.default_duration_hours || 2,
       on_time_limit_minutes: cls.default_on_time_limit_minutes || 30
     })
-    
+    fetchWeeklySessionCount(cls.class_id)
     setShowSessionConfigModal(true)
   }
 
@@ -980,14 +1119,8 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
                           </div>
                         </div>
                         <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:text-[#0071e3] transition-colors">{cls.subject_name}</h3>
-                        <div className="flex items-center space-x-2 mb-4">
+                        <div className="flex items-center justify-center space-x-2 mb-4">
                           <p className="text-gray-400 text-sm font-bold">{cls.class_code}</p>
-                          {cls.schedule && (
-                            <span className="text-gray-300 text-sm">•</span>
-                          )}
-                          {cls.schedule && (
-                            <p className="text-gray-400 text-sm truncate">{cls.schedule}</p>
-                          )}
                         </div>
                         <div className="flex items-center text-[#0071e3] text-sm font-semibold opacity-0 group-hover:opacity-100 transition-all">
                           <span>เข้าจัดการคลาส</span>
@@ -1007,106 +1140,257 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
 
       {/* Modals */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}></div>
-          <div className="max-w-md w-full glass-card p-10 relative z-10 shadow-2xl scale-100 animate-in fade-in zoom-in duration-300">
-            <h3 className="text-2xl font-semibold tracking-tight text-gray-900 mb-6 text-center">สร้างคลาสใหม่</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ชื่อวิชา *</label>
-                <input 
-                  className="w-full apple-input"
-                  placeholder="เช่น วิทยาการคอมพิวเตอร์"
-                  value={newClass.subject_name}
-                  onChange={(e) => setNewClass({...newClass, subject_name: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">คำอธิบาย</label>
-                <input 
-                  className="w-full apple-input"
-                  placeholder="เช่น รายละเอียดวิชา"
-                  value={newClass.description}
-                  onChange={(e) => setNewClass({...newClass, description: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ตารางเรียน</label>
-                <div className="grid grid-cols-3 gap-2">
-                  <select 
-                    className="w-full apple-input"
-                    value={newClass.day}
-                    onChange={(e) => setNewClass({...newClass, day: e.target.value})}
-                  >
-                    {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  <select 
-                    className="w-full apple-input"
-                    value={newClass.startTime}
-                    onChange={(e) => {
-                      const newStartTime = e.target.value
-                      setNewClass({
-                        ...newClass, 
-                        startTime: newStartTime,
-                        endTime: '' // Reset end time when start time changes
-                      })
-                    }}
-                  >
-                    <option value="" disabled>เริ่มเรียน</option>
-                    {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <select 
-                    className="w-full apple-input"
-                    value={newClass.endTime}
-                    disabled={!newClass.startTime}
-                    onChange={(e) => setNewClass({...newClass, endTime: e.target.value})}
-                  >
-                    <option value="" disabled>จบคาบ</option>
-                    {TIMES.filter(t => !newClass.startTime || t > newClass.startTime).map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">จำนวนคาบทั้งหมด</label>
-                  <input 
-                    type="number"
-                    className="w-full apple-input"
-                    value={newClass.total_sessions}
-                    onChange={(e) => setNewClass({...newClass, total_sessions: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">เช็คชื่อได้ต่อสัปดาห์</label>
-                  <input 
-                    type="number"
-                    className="w-full apple-input"
-                    value={newClass.max_checkins_per_week}
-                    onChange={(e) => setNewClass({...newClass, max_checkins_per_week: parseInt(e.target.value) || 0})}
-                  />
-                </div>
-              </div>
-              <div className="flex space-x-3 pt-4">
-                <button 
-                  onClick={() => setShowCreateModal(false)} 
-                  className="flex-1 apple-button-secondary py-3"
-                >
-                  ยกเลิก
-                </button>
-                <button 
-                  onClick={createClass} 
-                  disabled={actionLoading}
-                  className="flex-1 apple-button-primary py-3"
-                >
-                  {actionLoading ? 'กำลังสร้าง...' : 'สร้างคลาส'}
-                </button>
-              </div>
-            </div>
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}></div>
+    <div className="max-w-md w-full glass-card p-10 relative z-10 shadow-2xl scale-100 animate-in fade-in zoom-in duration-300 max-h-[85vh] overflow-y-auto">
+      <h3 className="text-2xl font-semibold tracking-tight text-gray-900 mb-6 text-center">สร้างคลาสใหม่</h3>
+
+      <div className="space-y-4">
+
+        {/* ── ข้อมูลร่วมทุก section ── */}
+        <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          ข้อมูลร่วมกันทุก Section
+        </p>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">ชื่อวิชา *</label>
+          <input
+            className="w-full apple-input"
+            placeholder="เช่น English Communication"
+            value={newClass.subject_name}
+            onChange={(e) => setNewClass({ ...newClass, subject_name: e.target.value })}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">คำอธิบาย</label>
+          <input
+            className="w-full apple-input"
+            placeholder="เช่น รายละเอียดวิชา"
+            value={newClass.description}
+            onChange={(e) => setNewClass({ ...newClass, description: e.target.value })}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">จำนวนคาบทั้งหมด</label>
+            <input
+              type="number"
+              className="w-full apple-input"
+              value={newClass.total_sessions}
+              onChange={(e) => setNewClass({ ...newClass, total_sessions: parseInt(e.target.value) || 0 })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">เช็คชื่อได้ต่อสัปดาห์</label>
+            <input
+              type="number"
+              className="w-full apple-input"
+              value={newClass.max_checkins_per_week}
+              onChange={(e) => setNewClass({ ...newClass, max_checkins_per_week: parseInt(e.target.value) || 0 })}
+            />
           </div>
         </div>
-      )}
+
+        {/* ── divider ── */}
+        <div className="border-t border-gray-100 pt-2">
+          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mb-3">
+            Sections — ตารางเรียน
+          </p>
+
+          {/* ── Section blocks ── */}
+          <div className="space-y-4">
+            {newClass.sections.map((section, si) => (
+              <div key={si} className="border border-gray-100 rounded-2xl p-4 space-y-3 bg-white/40">
+
+                {/* Section header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold bg-[#0071e3]/10 text-[#0071e3] px-2 py-0.5 rounded-lg">
+                      Section {si + 1}
+                    </span>
+                    {newClass.subject_name && newClass.sections.length > 1 && (
+                      <span className="text-[11px] text-gray-400">
+                        → {newClass.subject_name}[{si + 1}]
+                      </span>
+                    )}
+                    {newClass.subject_name && newClass.sections.length === 1 && (
+                      <span className="text-[11px] text-gray-400">
+                        → {newClass.subject_name}
+                      </span>
+                    )}
+                  </div>
+                  {si > 0 && (
+                    <button
+                      onClick={() => {
+                        const sections = newClass.sections.filter((_, i) => i !== si)
+                        setNewClass({ ...newClass, sections })
+                      }}
+                      className="text-[11px] text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-lg transition-all"
+                    >
+                      ✕ ลบ section นี้
+                    </button>
+                  )}
+                </div>
+
+                {/* Schedule slots */}
+                <label className="block text-sm font-medium text-gray-600">ตารางเรียน</label>
+                <div className="space-y-2">
+                  {section.scheduleSlots.map((slot, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        className="apple-input flex-1"
+                        value={slot.day}
+                        onChange={(e) => {
+                          const sections = [...newClass.sections]
+                          sections[si] = {
+                            ...sections[si],
+                            scheduleSlots: sections[si].scheduleSlots.map((s, i) =>
+                              i === idx ? { ...s, day: e.target.value } : s
+                            )
+                          }
+                          setNewClass({ ...newClass, sections })
+                        }}
+                      >
+                        {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                      </select>
+
+                      <select
+                        className="apple-input flex-1"
+                        value={slot.startTime}
+                        onChange={(e) => {
+                          const sections = [...newClass.sections]
+                          sections[si] = {
+                            ...sections[si],
+                            scheduleSlots: sections[si].scheduleSlots.map((s, i) =>
+                              i === idx ? { ...s, startTime: e.target.value, endTime: '' } : s
+                            )
+                          }
+                          setNewClass({ ...newClass, sections })
+                        }}
+                      >
+                        <option value="" disabled>เริ่ม</option>
+                        {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+
+                      <select
+                        className="apple-input flex-1"
+                        value={slot.endTime}
+                        disabled={!slot.startTime}
+                        onChange={(e) => {
+                          const sections = [...newClass.sections]
+                          sections[si] = {
+                            ...sections[si],
+                            scheduleSlots: sections[si].scheduleSlots.map((s, i) =>
+                              i === idx ? { ...s, endTime: e.target.value } : s
+                            )
+                          }
+                          setNewClass({ ...newClass, sections })
+                        }}
+                      >
+                        <option value="" disabled>จบ</option>
+                        {TIMES.filter(t => !slot.startTime || t > slot.startTime)
+                          .map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+
+                      {section.scheduleSlots.length > 1 && (
+                        <button
+                          onClick={() => {
+                            const sections = [...newClass.sections]
+                            sections[si] = {
+                              ...sections[si],
+                              scheduleSlots: sections[si].scheduleSlots.filter((_, i) => i !== idx)
+                            }
+                            setNewClass({ ...newClass, sections })
+                          }}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* ปุ่มเพิ่มวันเรียนภายใน section */}
+                  <button
+                    onClick={() => {
+                      const sections = [...newClass.sections]
+                      sections[si] = {
+                        ...sections[si],
+                        scheduleSlots: [
+                          ...sections[si].scheduleSlots,
+                          { day: 'จันทร์', startTime: '', endTime: '' }
+                        ]
+                      }
+                      setNewClass({ ...newClass, sections })
+                    }}
+                    className="w-full py-2 border border-dashed border-[#0071e3]/40 text-[#0071e3] text-xs font-medium rounded-xl hover:bg-[#0071e3]/5 transition-all"
+                  >
+                    + เพิ่มวันเรียนใน Section {si + 1}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ปุ่มเพิ่ม Section */}
+          <button
+            onClick={() => {
+              const sections = [
+                ...newClass.sections,
+                { scheduleSlots: [{ day: 'จันทร์', startTime: '', endTime: '' }] }
+              ]
+              setNewClass({ ...newClass, sections })
+            }}
+            className="w-full mt-3 py-2 border border-dashed border-gray-200 text-gray-400 text-sm rounded-xl hover:border-gray-300 hover:text-gray-500 transition-all"
+          >
+            + เพิ่ม Section
+          </button>
+
+          {/* Preview ชื่อที่จะสร้าง */}
+          {newClass.sections.length > 1 && newClass.subject_name && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-gray-400">จะสร้าง:</span>
+              {newClass.sections.map((_, i) => (
+                <span key={i} className="text-[11px] bg-gray-50 border border-gray-100 rounded-lg px-2 py-0.5 text-gray-500">
+                  {newClass.subject_name}[{i + 1}]
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── ปุ่มยืนยัน ── */}
+        <div className="flex space-x-3 pt-2">
+          <button
+            onClick={() => setShowCreateModal(false)}
+            className="flex-1 apple-button-secondary py-3"
+          >
+            ยกเลิก
+          </button>
+          <button
+            onClick={createClass}
+            disabled={actionLoading}
+            className="flex-1 apple-button-primary py-3"
+          >
+            {actionLoading
+              ? 'กำลังสร้าง...'
+              : newClass.sections.length > 1
+                ? `สร้างคลาส (${newClass.sections.length} Section)`
+                : 'สร้างคลาส'}
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+)}
 
       
       {showSessionConfigModal && selectedClassForSession && (
@@ -1144,7 +1428,12 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
                   <span className="font-bold text-yellow-600">บันทึกว่าสาย</span>
                 </div>
               </div>
-
+                <div className="flex justify-between items-center border-t border-gray-200 pt-2">
+                        <span className="text-sm text-gray-500">📅 สัปดาห์นี้เช็คไปแล้ว:</span>
+<span className="font-bold text-[#0071e3]">
+  {weeklySessionCount} / {selectedClassForSession?.max_checkins_per_week || '?'} ครั้ง
+</span>
+                      </div>
               <div className="flex space-x-3 pt-2">
                 <button
                   onClick={() => {
@@ -1270,7 +1559,45 @@ const handleManualCaptureFromVideo = async (imageBlob: Blob) => {
           onClose={() => setShowClassCodeModal(null)}
         />
       )}
-      
+      {showMultiClassCodeModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-y-auto">
+            <div className="p-6">
+
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-gray-900">รหัสเข้าร่วมคลาส</h3>
+                <button onClick={() => setShowMultiClassCodeModal(null)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                {showMultiClassCodeModal.map((cls, i) => (
+                  <MultiClassCodeCard key={i} classCode={cls.code} className={cls.name} />
+                ))}
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <h5 className="font-medium text-gray-900 mb-2">วิธีการให้นักเรียนเข้าร่วม:</h5>
+                <ol className="text-sm text-gray-600 space-y-1">
+                  <li>1. แชร์รหัสประจำ Section ให้นักเรียนแต่ละกลุ่ม</li>
+                  <li>2. นักเรียนเข้าสู่ระบบและคลิก "เข้าร่วมวิชา"</li>
+                  <li>3. กรอกรหัสที่ได้รับและกดเข้าร่วม</li>
+                </ol>
+              </div>
+
+              <div className="text-center">
+                <button onClick={() => setShowMultiClassCodeModal(null)} className="text-gray-500 hover:text-gray-700 text-sm">
+                  ปิดหน้าต่าง
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
       {/* Attendance Log Modal */}
       {showAttendanceLogModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
