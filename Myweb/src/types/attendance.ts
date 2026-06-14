@@ -39,6 +39,20 @@ export interface AttendanceSession {
   max_snapshots_per_hour: number
   created_at: string
   updated_at: string
+  attendance_count: number
+  class_subject_name: string | null
+  class_description: string | null
+  class_code: string | null
+  session_number: number | null
+  recognition_threshold: number | null
+  det_size: string | null
+  camera_id: string | null
+  total_students: number
+  present_count: number
+  late_count: number
+  absent_count: number
+  avg_confidence: number | null
+  low_confidence_count: number
 }
 
 export interface AttendanceRecord {
@@ -56,6 +70,18 @@ export interface AttendanceRecord {
   trigger_type: TriggerType
   device_id: string | null
   created_at: string
+  liveness_passed: boolean | null
+  liveness_score: number | null
+  final_confidence: number | null
+  recognition_distance_m: number | null
+  embedding_id: number | null
+  augmentation_type_matched: string | null
+  detection_score: number | null
+  faiss_rank: number | null
+  is_manual_override: boolean
+  override_by: string | null
+  override_reason: string | null
+  override_at: string | null
 }
 
 export interface MotionCapture {

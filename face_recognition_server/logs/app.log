@@ -241,3 +241,6 @@
 2025-09-15 02:16:10,154 | INFO | main | 🔄 Starting motion processing queue...
 2025-09-15 02:16:10,156 | INFO | main | 🛑 Shutting down Motion Detection Server...
 2025-09-15 02:16:10,156 | INFO | main | ✅ Motion Detection Server shutdown complete
+2026-06-14 11:51:05,918:INFO - WRITE TEST AT 2026-06-14 11:51:05.918636
+2026-06-14 11:51:50,071:INFO - WRITE TEST 2 AT 2026-06-14 11:51:50.071123
+2026-06-14 11:59:28,610:INFO - HANDLED WRITE AT 2026-06-14 11:59:28.610844

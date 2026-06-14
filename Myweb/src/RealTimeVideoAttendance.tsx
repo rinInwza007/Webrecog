@@ -1,12 +1,6 @@
 import { useState, useRef, useEffect, FC } from 'react'
 import config from './config'
-import type { AttendanceListItem, StreamStats } from '@/types'
-
-interface RealTimeVideoAttendanceProps {
-  classId: string
-  teacherEmail: string
-  onSessionEnd?: (attendanceList: AttendanceListItem[]) => void
-}
+import type { AttendanceListItem, StreamStats, RealTimeVideoAttendanceProps } from '@/types'
 
 const RealTimeVideoAttendance: FC<RealTimeVideoAttendanceProps> = ({ classId, teacherEmail, onSessionEnd }) => {
   const [isStreaming, setIsStreaming] = useState(false)

@@ -65,13 +65,22 @@ export interface Class extends ClassAttendanceSettings {
   subject_name: string
   description: string | null
   schedule: string | null
-  total_sessions: number | null
-  max_checkins_per_week: number | null
   teacher_id: string | null
   teacher_email: string
   class_code: string
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  is_deleted: boolean
+  total_sessions: number | null
+  max_checkins_per_week: number | null
+  actual_session_count: number
+  enrolled_student_count: number
+  deleted_by: string | null
+  delete_reason: string | null
+  default_recognition_threshold: number | null
+  default_det_size: string | null
+  default_camera_id: string | null
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -79,11 +88,14 @@ export interface Class extends ClassAttendanceSettings {
 // ─────────────────────────────────────────────────────────────
 
 export interface StudentEnrollment {
-  enrollment_id: string
-  student_id: string | null
-  class_id: string | null
+  id: string
+  class_id: string
+  student_id: string // maps to users.school_id
   enrolled_at: string
-  status: EnrollmentStatus
+  enrolled_by: string | null
+  is_active: boolean
+  dropped_at: string | null
+  drop_reason: string | null
 }
 
 // ─────────────────────────────────────────────────────────────

@@ -3,8 +3,7 @@ import Swal from 'sweetalert2'
 import { useAuth } from './AuthContext'
 import { supabase } from '../supabaseClient'
 import type { User as SupabaseUser, AuthError } from '@supabase/supabase-js'
-import type { User as AppUser } from '../types/user'
-import type { UserRole } from '../types/common'
+import type { User as AppUser, UserRole } from '@/types'
 
 interface RegisterProps {
   onSwitchToLogin: () => void

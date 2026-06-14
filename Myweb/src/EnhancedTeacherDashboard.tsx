@@ -7,7 +7,7 @@ import LiveVideoStream from './LiveVideoStream'
 import ClassDetailView from './ClassDetailView'
 import config from './config'
 import image from './utils/logo/image.png' 
-import type { Class, AttendanceSession, AttendanceRecord, User as AppUser } from '@/types'
+import type { Class, AttendanceSession, AttendanceRecord, User as AppUser, MotionCapture } from '@/types'
 
 interface SpoofEvent {
   image_b64: string
@@ -24,10 +24,10 @@ const TIMES = Array.from({ length: 10 }, (_, i) => {
 const EnhancedTeacherDashboard: FC = () => {
   const { user, signOut } = useAuth()
   const [classes, setClasses] = useState<Class[]>([])
-  const [sessions, setSessions] = useState<any[]>([])
-  const [currentSession, setCurrentSession] = useState<any>(null)
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
-  const [motionStats, setMotionStats] = useState<any>(null)
+  const [sessions, setSessions] = useState<AttendanceSession[]>([])
+  const [currentSession, setCurrentSession] = useState<AttendanceSession | null>(null)
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
+  const [motionStats, setMotionStats] = useState<MotionCapture | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   
@@ -42,7 +42,7 @@ const EnhancedTeacherDashboard: FC = () => {
   const [showAttendanceLogModal, setShowAttendanceLogModal] = useState(false)
   const [showClassAttendanceSettingsModal, setShowClassAttendanceSettingsModal] = useState<Class | null>(null)
   const [activeLogTab, setActiveLogTab] = useState<'logs' | 'attendance'>('logs')
-  const [sessionLogs, setSessionLogs] = useState<any[]>([])
+  const [sessionLogs, setSessionLogs] = useState<MotionCapture[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [selectedClassForSession, setSelectedClassForSession] = useState<Class | null>(null)
   const [showSessionConfigModal, setShowSessionConfigModal] = useState(false)
@@ -179,7 +179,7 @@ const EnhancedTeacherDashboard: FC = () => {
       }
 
       // Set current session with motion detection preference
-      const activeSessions = (sessionsData as any[]) || []
+      const activeSessions = (sessionsData as AttendanceSession[]) || []
       if (activeSessions.length > 0) {
         // ให้ความสำคัญกับ motion detection sessions
         const motionSession = activeSessions.find(s => s.session_type === 'motion_detection')
