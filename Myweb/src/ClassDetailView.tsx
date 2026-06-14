@@ -243,8 +243,9 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
 
       setAttendanceData(newData)
 
-      if (!selectedSessionId && sessions && sessions.length > 0) {
+      if (!silent && !selectedSessionId && sessions && sessions.length > 0) {
         setSelectedSessionId(sessions[0].id)
+        fetchRecognitionStats(sessions[0].id)
       }
 
       if (silent && allAttendanceRecords.length > attendanceData.recentAttendance.length) {
@@ -346,29 +347,24 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
   const [recognitionStatsLoading, setRecognitionStatsLoading] = useState(false)
   
 
-  const fetchRecognitionStats = async (sessionId: string) => {
-    setRecognitionStatsLoading(true)
-    try {
-      const backendUrl = import.meta.env.VITE_FASTAPI_URL
-      if (!backendUrl) {
-        console.error('VITE_FASTAPI_URL is not defined')
-        return
-      }
-      const response = await fetch(`${backendUrl}/api/session/${sessionId}/recognition-stats`)
-      if (!response.ok) {
-        console.error('Recognition stats request failed:', response.status)
-        return
-      }
-      const data = await response.json()
-      if (data.success) {
-        setRecognitionStats(data.stats)
-      }
-    } catch (error) {
-      console.error('Error fetching recognition stats:', error)
-    } finally {
-      setRecognitionStatsLoading(false)
-    }
+const fetchRecognitionStats = async (sessionId: string) => {
+  setRecognitionStatsLoading(true)
+  try {
+    const { data, error } = await supabase
+      .from('session_recognition_stats')
+      .select('*')
+      .eq('session_id', sessionId)
+      .single()
+
+    if (error) throw error
+    setRecognitionStats(data || null)
+  } catch (error) {
+    console.error('Error fetching recognition stats:', error)
+    setRecognitionStats(null)
+  } finally {
+    setRecognitionStatsLoading(false)
   }
+}
   const downloadCSV = (csvContent: string, prefix: string) => {
     const BOM = '\uFEFF'
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
