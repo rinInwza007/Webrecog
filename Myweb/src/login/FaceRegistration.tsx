@@ -383,7 +383,7 @@ const FaceRegistration: FC<FaceRegistrationProps> = ({ onComplete }) => {
       Swal.fire({
         icon: 'success',
         title: 'ลงทะเบียนใบหน้าสำเร็จ!',
-        text: 'กำลังพาคุณกลับไปยังหน้าเข้าสู่ระบบ...',
+        text: 'กำลังพาคุณเข้าสู่ระบบ...',
         timer: 3000,
         showConfirmButton: false,
         allowOutsideClick: false

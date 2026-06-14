@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate ,useNavigate } from 'react-router-dom'
 import { FC, useState, useEffect, ReactNode } from 'react'
 import { useAuth } from '../login/AuthContext'
 import Login from '../login/Login'
@@ -72,6 +72,7 @@ interface AuthFlowProps {
 }
 
 const AuthFlow: FC<AuthFlowProps> = ({ initialMode = 'login' }) => {
+  const navigate = useNavigate()  // เพิ่ม
   const [state, setState] = useState<AuthFlowState>({
     mode: initialMode,
     registeredUser: null,
@@ -104,7 +105,7 @@ const AuthFlow: FC<AuthFlowProps> = ({ initialMode = 'login' }) => {
 
   const handleFaceRegistrationComplete = (): void => {
     // Face registration complete, redirect to dashboard or reload to re-run checks
-    window.location.reload()
+    navigate('/dashboard', { replace: true }) // ใช้ navigate แทนการ reload 
   }
 
   return (
