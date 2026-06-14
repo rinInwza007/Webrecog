@@ -164,7 +164,7 @@ const Register: FC<RegisterProps> = ({ onSwitchToLogin, onRegistrationSuccess })
         // กรณีต้องยืนยันอีเมล (session จะเป็น null)
         if (!session) {
           Swal.fire({
-            icon: 'info',
+            icon: 'success', 
             title: 'สมัครสมาชิกสำเร็จ!',
             text: 'กรุณาตรวจสอบอีเมลของคุณเพื่อยืนยันตัวตนก่อนเข้าสู่ระบบ',
             confirmButtonColor: '#0071e3'

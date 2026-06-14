@@ -586,7 +586,7 @@ class MotionProcessingService:
             
             image_array = np.array(image_pil)
             
-            # Get enrolled students
+            # Get enrolled students 
             enrolled_students = await self.get_enrolled_students_for_class(session_data['class_id'])
             
             if not enrolled_students:
@@ -613,27 +613,88 @@ class MotionProcessingService:
             new_records = 0
             already_checked = 0
             unrecognized = 0
+            duplicate_ids = []
 
             for face_info in detected_faces:
                 if not face_info.get('verified'):
                     unrecognized += 1
                     continue
+
                 success = await self.attendance_service.record_attendance_from_face(
                     face_info, session_id, session_data, item['capture_time'],
                     motion_strength, phase
                 )
+
                 if success:
                     new_records += 1
                 else:
                     already_checked += 1
+                    duplicate_ids.append(face_info['student_id'])
 
             if new_records > 0:
                 with motion_session_manager.lock:
                     if session_id in motion_session_manager.sessions:
                         motion_session_manager.sessions[session_id]['stats']['attendance_records'] += new_records
             
-            processing_time = time.time() - start_time
-            
+
+            # Fetch existing stats for logging and update
+            existing = supabase_manager.get_client()\
+                .table('session_recognition_stats')\
+                .select('*')\
+                .eq('session_id', session_id)\
+                .execute()
+                        
+            if existing.data and len(existing.data) > 0:
+                prev = existing.data[0]  # ← เพิ่ม [0]
+                new_detections   = prev['total_detections']   + len(detected_faces)
+                new_recognized   = prev['total_recognized']   + new_records
+                new_duplicate    = prev['total_duplicate']    + already_checked
+                new_unrecognized = prev['total_unrecognized'] + unrecognized
+                dup_detail = prev['duplicate_detail'] or []
+                for sid in duplicate_ids:
+                    found = False
+                    for entry in dup_detail:
+                        if entry['student_id'] == sid:
+                            entry['count'] += 1
+                            found = True
+                            break
+                    if not found:
+                        user_result = supabase_manager.get_client()\
+                            .table('users')\
+                            .select('full_name')\
+                            .eq('school_id', sid)\
+                            .execute()
+                        name = user_result.data[0]['full_name'] if user_result.data else sid
+                        dup_detail.append({'student_id': sid, 'name': name, 'count': 1})
+            else:
+                new_detections   = len(detected_faces)
+                new_recognized   = new_records
+                new_duplicate    = already_checked
+                new_unrecognized = unrecognized
+                dup_detail = []
+                for sid in duplicate_ids:
+                    # ดึงชื่อจาก users
+                    user_result = supabase_manager.get_client()\
+                        .table('users')\
+                        .select('full_name')\
+                        .eq('school_id', sid)\
+                        .execute()
+                    name = user_result.data[0]['full_name'] if user_result.data else sid
+                    dup_detail.append({'student_id': sid, 'name': name, 'count': 1})
+
+            supabase_manager.get_client()\
+                .table('session_recognition_stats')\
+                .upsert({
+                    'session_id':         session_id,
+                    'total_detections':   new_detections,
+                    'total_recognized':   new_recognized,
+                    'total_duplicate':    new_duplicate,
+                    'total_unrecognized': new_unrecognized,
+                    'duplicate_detail':   dup_detail
+                }, on_conflict='session_id')\
+                .execute()
+
+
             # Update capture log
             advanced_metrics = {
                 'processing_method': 'advanced_similarity',
@@ -657,7 +718,7 @@ class MotionProcessingService:
             }
             
             self.supabase_mgr.update_motion_capture(session_id, item['capture_time'], update_data)
-            
+            processing_time = time.time() - start_time
             logger.info(f"🚀 Motion capture complete: {new_records} new records in {processing_time:.2f}s")
             
             return {

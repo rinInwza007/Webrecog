@@ -101,7 +101,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
       
       const interval = setInterval(() => {
         fetchClassAttendanceData(true)
-      }, 30000)
+      }, 1000)
 
       return () => clearInterval(interval)
     }
@@ -812,6 +812,111 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                  <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-semibold tracking-tight text-gray-900">ภาพรวมคลาสเรียน</h2>
                  </div>
+                 {/* ลายละเอียดคลาส */}
+              <div className="grid grid-cols-2 gap-4">
+
+                {/* ซ้ายบน — วัน/เวลาเรียน */}
+                <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-[#0071e3]/10 rounded-xl flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5 text-left">วัน/เวลาเรียน</p>
+                    <p className="text-base font-semibold text-gray-900 text-left">{classData.schedule || 'ไม่ระบุ'}</p>
+                  </div>
+                </div>
+
+                {/* ขวาบน — เช็คชื่อได้ต่อสัปดาห์ */}
+                <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5 text-left">เช็คชื่อได้ต่อสัปดาห์</p>
+                    <p className="text-base font-semibold text-gray-900 text-left">
+                      {classData.max_checkins_per_week ? `${classData.max_checkins_per_week} ครั้ง` : 'ไม่ระบุ'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ซ้ายล่าง — คาบเรียนทั้งหมด */}
+                <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-[#0071e3]/10 rounded-xl flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-[#0071e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5 text-left">คาบเรียนทั้งหมด</p>
+                    <p className="text-base font-semibold text-gray-900 text-left">
+                      {classData.total_sessions ? `${classData.total_sessions} คาบ` : 'ไม่ระบุ'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ขวาล่าง — สัปดาห์นี้ */}
+                <div className="flex items-center gap-4 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                  <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center shrink-0">
+                    <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5 text-left">สัปดาห์นี้</p>
+                    <p className="text-base font-semibold text-gray-900 text-left">
+                      เช็คไปแล้ว {(() => {
+                        const startOfWeek = new Date()
+                        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+                        startOfWeek.setHours(0, 0, 0, 0)
+                        return attendanceData.sessions.filter(s => new Date(s.start_time) >= startOfWeek).length
+                      })()} / {classData.max_checkins_per_week || '?'} ครั้ง
+                    </p>
+                    <div className="flex gap-1 mt-1">
+                      {Array.from({ length: classData.max_checkins_per_week || 0 }).map((_, i) => {
+                        const startOfWeek = new Date()
+                        startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay())
+                        startOfWeek.setHours(0, 0, 0, 0)
+                        const thisWeekCount = attendanceData.sessions.filter(s => new Date(s.start_time) >= startOfWeek).length
+                        return <div key={i} className={`w-3 h-3 rounded-full ${i < thisWeekCount ? 'bg-yellow-400' : 'bg-gray-100'}`} />
+                      })}
+                    </div>
+                  </div>
+                </div>
+                {/* Progress — full width */}
+                <div className="col-span-2 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center shrink-0">
+                        <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">ความคืบหน้าคาบเรียน</p>
+                        <p className="text-base font-semibold text-gray-900">
+                          เช็คชื่อไปแล้ว {attendanceData.totalSessions} คาบ จากทั้งหมด {classData.total_sessions || '?'} คาบ
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-[#0071e3]">
+                      {classData.total_sessions
+                        ? `${Math.round((attendanceData.totalSessions / classData.total_sessions) * 100)}%`
+                        : '-'}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0071e3] rounded-full transition-all duration-700"
+                      style={{ width: `${classData.total_sessions ? Math.min((attendanceData.totalSessions / classData.total_sessions) * 100, 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+              </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="glass-morphism p-8 flex flex-col h-full">
                        <h3 className="text-lg font-semibold mb-4 text-gray-900">คาบเรียนล่าสุด</h3>
@@ -1199,31 +1304,31 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                         return (
                           <>
                             <div className="glass-morphism p-5 border-green-100 bg-green-50/30 flex flex-col justify-between">
-                              <p className="text-[10px] text-green-600 font-bold uppercase mb-1">มาเรียน</p>
+                              <p className="text-sm text-green-600 font-bold uppercase mb-1">มาเรียน</p>
                               <div className="flex items-baseline gap-1">
                                 <p className="text-3xl font-bold text-green-700">{stats.present}</p>
-                                <p className="text-xs text-green-600/60 font-medium">คน</p>
+                                <p className="text-sm text-green-600/60 font-medium">คน</p>
                               </div>
                             </div>
                             <div className="glass-morphism p-5 border-yellow-100 bg-yellow-50/30 flex flex-col justify-between">
-                              <p className="text-[10px] text-yellow-600 font-bold uppercase mb-1">มาสาย</p>
+                              <p className="text-sm text-yellow-600 font-bold uppercase mb-1">มาสาย</p>
                               <div className="flex items-baseline gap-1">
                                 <p className="text-3xl font-bold text-yellow-700">{stats.late}</p>
-                                <p className="text-xs text-yellow-600/60 font-medium">คน</p>
+                                <p className="text-sm text-yellow-600/60 font-medium">คน</p>
                               </div>
                             </div>
                             <div className="glass-morphism p-5 border-red-100 bg-red-50/30 flex flex-col justify-between">
-                              <p className="text-[10px] text-red-600 font-bold uppercase mb-1">ขาด/ลา</p>
+                              <p className="text-sm text-red-600 font-bold uppercase mb-1">ขาด/ลา</p>
                               <div className="flex items-baseline gap-1">
                                 <p className="text-3xl font-bold text-red-700">{stats.absent + stats.leave}</p>
-                                <p className="text-xs text-red-600/60 font-medium">คน</p>
+                                <p className="text-sm text-red-600/60 font-medium">คน</p>
                               </div>
                             </div>
                             <div className="glass-morphism p-5 border-blue-100 bg-blue-50/30 flex flex-col justify-between">
-                              <p className="text-[10px] text-blue-600 font-bold uppercase mb-1">นักเรียนทั้งหมด</p>
+                              <p className="text-sm text-blue-600 font-bold uppercase mb-1">นักเรียนทั้งหมด</p>
                               <div className="flex items-baseline gap-1">
                                 <p className="text-3xl font-bold text-blue-700">{stats.total}</p>
-                                <p className="text-xs text-blue-600/60 font-medium">คน</p>
+                                <p className="text-sm text-blue-600/60 font-medium">คน</p>
                               </div>
                             </div>
                           </>
@@ -1236,10 +1341,10 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                       <table className="min-w-full divide-y divide-gray-100">
                         <thead className="bg-gray-50/50">
                           <tr>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
-                            <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">เวลาเช็คชื่อ</th>
-                            <th className="px-6 py-4 text-center text-xs font-bold text-gray-400 uppercase tracking-widest">สถานะ</th>
-                            <th className="px-6 py-4 text-right text-xs font-bold text-gray-400 uppercase tracking-widest">จัดการ</th>
+                              <th className="px-6 py-4 text-left text-sm font-bold text-gray-400 uppercase tracking-widest">นักเรียน</th>
+                              <th className="px-6 py-4 text-center text-sm font-bold text-gray-400 uppercase tracking-widest">เวลาเช็คชื่อ</th>
+                              <th className="px-6 py-4 text-center text-sm font-bold text-gray-400 uppercase tracking-widest">สถานะ</th>
+                              <th className="px-6 py-4 text-right text-sm font-bold text-gray-400 uppercase tracking-widest">จัดการ</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -1299,67 +1404,67 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
                       </table>
                     </div>
                   </div>
-{/* วิเคราะห์สถิติ */}
-<div className="bg-gray-50/40 rounded-2xl p-5 border border-gray-100">
-  <h3 className="text-base font-bold text-gray-700 uppercase tracking-widest mb-4">สถิติการจดจำใบหน้า</h3>
+                    {/* วิเคราะห์สถิติ */}
+                    <div className="bg-gray-50/40 rounded-2xl p-5 border border-gray-100">
+                      <h3 className="text-base font-bold text-gray-700 uppercase tracking-widest mb-4">สถิติการจดจำใบหน้า</h3>
 
-  {recognitionStatsLoading ? (
-    <div className="text-center py-6">
-      <div className="animate-spin h-6 w-6 border-2 border-gray-300 border-t-transparent rounded-full mx-auto mb-2"></div>
-      <p className="text-gray-400 text-sm">กำลังโหลด...</p>
-    </div>
-  ) : recognitionStats ? (
-    <div className="space-y-4">
-      {/* ตัวเลขสรุป */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
-          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จับใบหน้าได้</p>
-          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_detections}</p>
-          <p className="text-xs text-gray-400 mt-0.5">ครั้ง</p>
-        </div>
-        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
-          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำได้</p>
-          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_recognized}</p>
-          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (บันทึกใหม่)</p>
-        </div>
-        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
-          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำซ้ำ</p>
-          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_duplicate}</p>
-          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (เช็คชื่อแล้ว)</p>
-        </div>
-        <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
-          <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำไม่ได้</p>
-          <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_unrecognized}</p>
-          <p className="text-xs text-gray-400 mt-0.5">ครั้ง (ไม่ตรงในระบบ)</p>
-        </div>
-      </div>
+                      {recognitionStatsLoading ? (
+                        <div className="text-center py-6">
+                          <div className="animate-spin h-6 w-6 border-2 border-gray-300 border-t-transparent rounded-full mx-auto mb-2"></div>
+                          <p className="text-gray-400 text-sm">กำลังโหลด...</p>
+                        </div>
+                      ) : recognitionStats ? (
+                        <div className="space-y-4">
+                          {/* ตัวเลขสรุป */}
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs text-gray-400 font-bold uppercase mb-1">จับใบหน้าได้</p>
+                              <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_detections}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">ครั้ง</p>
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำได้</p>
+                              <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_recognized}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">ครั้ง (บันทึกใหม่)</p>
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำซ้ำ</p>
+                              <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_duplicate}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">ครั้ง (เช็คชื่อแล้ว)</p>
+                            </div>
+                            <div className="bg-white/60 rounded-xl p-4 border border-gray-100">
+                              <p className="text-xs text-gray-400 font-bold uppercase mb-1">จดจำไม่ได้</p>
+                              <p className="text-2xl font-semibold text-gray-700">{recognitionStats.total_unrecognized}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">ครั้ง (ไม่ตรงในระบบ)</p>
+                            </div>
+                          </div>
 
-      {/* รายชื่อจดจำซ้ำ */}
-      {recognitionStats.duplicate_detail && recognitionStats.duplicate_detail.length > 0 && (
-        <div>
-          <h4 className="text-sm font-bold text-gray-700 uppercase tracking-widest mb-2">รายชื่อที่ถูกจดจำซ้ำ</h4>
-          <div className="space-y-1.5">
-            {recognitionStats.duplicate_detail.map((item: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between p-3 bg-white/60 rounded-lg border border-gray-100">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">{item.name}</p>
-                  <p className="text-xs text-gray-400">{item.student_id}</p>
-                </div>
-                <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2.5 py-1 rounded-full">
-                  ซ้ำ {item.count} ครั้ง
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  ) : (
-    <div className="text-center py-6 text-gray-400">
-      <p className="text-xs">ยังไม่มีข้อมูลสถิติสำหรับคาบเรียนนี้</p>
-    </div>
-  )}
-</div>
+                          {/* รายชื่อจดจำซ้ำ */}
+                          {recognitionStats.duplicate_detail && recognitionStats.duplicate_detail.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-bold text-gray-700 uppercase tracking-widest mb-2">รายชื่อที่ถูกจดจำซ้ำ</h4>
+                              <div className="space-y-1.5">
+                                {recognitionStats.duplicate_detail.map((item: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between p-3 bg-white/60 rounded-lg border border-gray-100">
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-700">{item.name}</p>
+                                      <p className="text-xs text-gray-400">{item.student_id}</p>
+                                    </div>
+                                    <span className="bg-gray-100 text-gray-500 text-xs font-bold px-2.5 py-1 rounded-full">
+                                      ซ้ำ {item.count} ครั้ง
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-gray-400">
+                          <p className="text-xs">ยังไม่มีข้อมูลสถิติสำหรับคาบเรียนนี้</p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <div className="text-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
