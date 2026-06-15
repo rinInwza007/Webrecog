@@ -115,3 +115,4 @@ export interface EnrollmentWithDetails extends StudentEnrollment {
   student: UserRef
   class: ClassRef
 }
+
