@@ -3,6 +3,9 @@ import { supabase } from './supabaseClient'
 import type { Class, AttendanceSession, AttendanceRecord, MotionCapture } from '@/types'
 import Swal from 'sweetalert2'
 import LiveVideoStream from './LiveVideoStream'
+import { ClassGradingSettings } from './types/class_grading'
+import GradingSettingsModal from './GradingSettingsModal'
+
 
 interface ClassDetailViewProps {
   classData: Class
@@ -53,6 +56,7 @@ interface ClassAttendanceData {
   attendanceStats: AttendanceStats
 }
 
+
 const ClassDetailView: FC<ClassDetailViewProps> = ({ 
   classData, 
   onBack, 
@@ -83,6 +87,25 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
       leave: 0,
     }
   })
+
+  const [showGradingModal, setShowGradingModal] = useState(false)
+const [gradingSettings, setGradingSettings] = useState<ClassGradingSettings | null>(null)
+
+const fetchGradingSettings = async () => {
+  const { data } = await supabase
+    .from('class_grading_settings')
+    .select('*')
+    .eq('class_id', classData.class_id)
+    .maybeSingle()
+  setGradingSettings(data)
+}
+
+const saveGradingSettings = async (payload: Omit<ClassGradingSettings, 'id' | 'created_at' | 'updated_at'>) => {
+  await supabase
+    .from('class_grading_settings')
+    .upsert({ ...payload, class_id: classData.class_id }, { onConflict: 'class_id' })
+  setShowGradingModal(false)
+}
   const [loading, setLoading] = useState(true)
   const [selectedTab, setSelectedTab] = useState('overview')
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
@@ -341,6 +364,7 @@ const ClassDetailView: FC<ClassDetailViewProps> = ({
   }
 
   const [showExportModal, setShowExportModal] = useState(false)
+  
 
   //สถิติจดจำใบหน้า
   const [recognitionStats, setRecognitionStats] = useState<any>(null)
@@ -379,54 +403,101 @@ const fetchRecognitionStats = async (sessionId: string) => {
     document.body.removeChild(link)
   }
 
-  const exportCombinedToCSV = () => {
+  // ─────────────────────────────────────────────────────────────
+// แทนที่ฟังก์ชัน exportCombinedToCSV เดิมใน ClassDetailView.tsx
+// ด้วยเวอร์ชันนี้ที่คำนวณคะแนนจาก class_grading_settings
+// ─────────────────────────────────────────────────────────────
+
+const exportCombinedToCSV = async () => {
   if (attendanceData.recentAttendance.length === 0 || attendanceData.sessions.length === 0) {
     Swal.fire({
       icon: 'warning',
       title: 'ไม่มีข้อมูล',
-      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มคาบเรียนก่อนส่งออกข้อมูล'
+      text: 'ไม่มีข้อมูลการเช็คชื่อ กรุณาเริ่มคาบเรียนก่อนส่งออกข้อมูล',
     })
     setShowExportModal(false)
     return
   }
 
-  // Sort sessions by date
-  const sortedSessions = [...attendanceData.sessions].sort((a, b) =>
-    new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  // ── 1. โหลด grading settings ──────────────────────────────
+  const { data: gs } = await supabase
+    .from('class_grading_settings')
+    .select('present_score,late_score,leave_score,absent_score,max_attendance_score')
+    .eq('class_id', classData.class_id)
+    .maybeSingle()
+
+  // fallback ถ้ายังไม่เคยตั้งค่า
+  const grading = gs ?? {
+    present_score:        1,
+    late_score:           0.5,
+    leave_score:          0.5,
+    absent_score:         0,
+    max_attendance_score: 20,
+  }
+
+  // ── 2. เตรียม sessions เรียงตามวันที่ ─────────────────────
+  const sortedSessions = [...attendanceData.sessions].sort(
+    (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
   )
 
-  // Build period headers: คาบที่ 1, คาบที่ 2, ...
+  const totalSessions = attendanceData.totalSessions
+
+  // ── 3. สร้าง header ──────────────────────────────────────
   const periodHeaders = sortedSessions.map((_, i) => `คาบที่ ${i + 1}`)
 
-  // Final header row
   const headers = [
     'รหัสนักเรียน',
     'ชื่อ-นามสกุล',
     'คาบเรียนทั้งหมด',
+    // สรุปจำนวน
     'มาเรียน',
-    'สาย',
+    'มาสาย',
+    'ลา',
     'ขาด',
-    ...periodHeaders
+    // คะแนนรวม
+    `คะแนนรวม (เต็ม ${grading.max_attendance_score})`,
+    // คะแนนอ้างอิง
+    `อ้างอิง: มา=${grading.present_score} / สาย=${grading.late_score} / ลา=${grading.leave_score} / ขาด=${grading.absent_score}`,
+    // รายคาบ
+    ...periodHeaders,
   ]
 
-  const totalSessions = attendanceData.totalSessions
-
+  // ── 4. สร้างแต่ละแถว ──────────────────────────────────────
   const rows = attendanceData.topStudents.map(student => {
     const studentRecords = attendanceData.recentAttendance.filter(
       r => r.student_id === student.student_id
     )
 
-    // Summary counts
-    const present = studentRecords.filter(r => r.status === 'present').length
-    const late = studentRecords.filter(r => r.status === 'late').length
-    const absent = totalSessions - (present + late)
+    // นับแต่ละสถานะ
+    const presentCount = studentRecords.filter(r => r.status === 'present').length
+    const lateCount    = studentRecords.filter(r => r.status === 'late').length
+    const leaveCount   = studentRecords.filter(r => r.status === 'leave').length
+    const absentCount  = totalSessions - (presentCount + lateCount + leaveCount)
 
-    // Per-period status
+    // คำนวณคะแนนดิบ
+    const rawScore =
+      presentCount * grading.present_score +
+      lateCount    * grading.late_score    +
+      leaveCount   * grading.leave_score   +
+      absentCount  * grading.absent_score
+
+    // scale ให้อยู่ในช่วง max_attendance_score
+    // (คะแนนเต็มดิบ = totalSessions * present_score)
+    const maxRawScore = totalSessions * grading.present_score || 1
+    const scaledScore = parseFloat(
+      Math.min(
+        (rawScore / maxRawScore) * grading.max_attendance_score,
+        grading.max_attendance_score
+      ).toFixed(2)
+    )
+
+    // สถานะรายคาบ
     const periodStatuses = sortedSessions.map(session => {
       const record = studentRecords.find(r => r.session_id === session.id)
       if (!record) return 'ขาด'
       if (record.status === 'present') return 'มา'
-      if (record.status === 'late') return 'สาย'
+      if (record.status === 'late')    return 'สาย'
+      if (record.status === 'leave')   return 'ลา'
       return 'ขาด'
     })
 
@@ -434,15 +505,35 @@ const fetchRecognitionStats = async (sessionId: string) => {
       student.student_id,
       student.name,
       totalSessions,
-      present,
-      late,
-      absent,
-      ...periodStatuses
+      presentCount,
+      lateCount,
+      leaveCount,
+      absentCount,
+      scaledScore,
+      '',           // คอลัมน์ "อ้างอิง" — ใส่ค่าในแถวแรกเท่านั้น
+      ...periodStatuses,
     ]
   })
 
-  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-  downloadCSV(csvContent, 'attendance_combined')
+  // ใส่ข้อความอ้างอิงในแถวแรกเท่านั้น (คอลัมน์ index 8)
+  if (rows.length > 0) {
+    rows[0][8] = `มา=${grading.present_score} / สาย=${grading.late_score} / ลา=${grading.leave_score} / ขาด=${grading.absent_score}`
+  }
+
+  // ── 5. Build CSV ──────────────────────────────────────────
+  const escape = (v: unknown) => {
+    const s = String(v ?? '')
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? `"${s.replace(/"/g, '""')}"`
+      : s
+  }
+
+  const csvContent = [
+    headers.map(escape).join(','),
+    ...rows.map(row => row.map(escape).join(',')),
+  ].join('\n')
+
+  downloadCSV(csvContent, 'attendance_with_score')
   setShowExportModal(false)
 }
 
@@ -498,15 +589,6 @@ const fetchRecognitionStats = async (sessionId: string) => {
               ) : (
                 <div className="flex items-center space-x-2 w-full md:w-auto">
                   <button
-                    onClick={() => onShowSettings(classData)}
-                    className="p-3 bg-white text-[#0071e3] hover:bg-[#0071e3] hover:text-white rounded-2xl transition-all border border-[#0071e3]/20 shadow-sm"
-                    title="ตั้งค่าเวลาเช็คชื่อ"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                    </svg>
-                  </button>
-                  <button
                     onClick={() => onStartAttendance(classData)}
                     className="flex-1 md:flex-none apple-button-primary py-3 px-6 flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20"
                   >
@@ -516,6 +598,7 @@ const fetchRecognitionStats = async (sessionId: string) => {
                     <span>เริ่มเช็คชื่อ</span>
                   </button>
                 </div>
+                
               )}
               <button
                 onClick={() => setShowExportModal(true)}
@@ -1492,8 +1575,28 @@ const fetchRecognitionStats = async (sessionId: string) => {
                     <p className="text-sm text-gray-400 group-hover:text-white/80 transition-colors">สรุปจำนวนครั้งที่ มา/สาย/ขาด รายบุคคล</p>
                   </div>
                 </button>
-
-                
+                <button
+                  onClick={() => {
+                    setShowExportModal(false)
+                    setShowGradingModal(true)
+                  }}
+                  className="group flex items-center p-6 glass-morphism hover:bg-gray-800 hover:border-gray-800 transition-all text-left"
+                >
+                  <div className="w-14 h-14 bg-gray-100 group-hover:bg-white/20 rounded-2xl flex items-center justify-center mr-6 transition-all">
+                    <svg className="w-8 h-8 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-gray-900 group-hover:text-white transition-colors">
+                      ตั้งค่าคะแนนการเข้าเรียน
+                    </h4>
+                    <p className="text-sm text-gray-400 group-hover:text-white/70 transition-colors">
+                      กำหนดคะแนน มา / สาย / ลา / ขาด และคะแนนเต็ม
+                    </p>
+                  </div>
+                </button>
               </div>
 
               <div className="mt-8 p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
@@ -1503,6 +1606,15 @@ const fetchRecognitionStats = async (sessionId: string) => {
           </div>
         </div>
       )}
+
+        {/* Grading Settings Modal — เพิ่มตรงนี้ */}
+        {showGradingModal && (
+          <GradingSettingsModal
+            classId={classData.class_id}
+            teacherId={classData.teacher_id}
+            onClose={() => setShowGradingModal(false)}
+          />
+        )}
     </div>
   )
 }

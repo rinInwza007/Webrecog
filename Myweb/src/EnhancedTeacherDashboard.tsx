@@ -1182,7 +1182,7 @@ const createClass = async () => {
               type="number"
               className="w-full apple-input"
               value={newClass.total_sessions}
-              onChange={(e) => setNewClass({ ...newClass, total_sessions: parseInt(e.target.value) || 0 })}
+              onChange={(e) => setNewClass({ ...newClass, total_sessions: parseInt(e.target.value) || 1 })}
             />
           </div>
           <div>
@@ -1191,7 +1191,7 @@ const createClass = async () => {
               type="number"
               className="w-full apple-input"
               value={newClass.max_checkins_per_week}
-              onChange={(e) => setNewClass({ ...newClass, max_checkins_per_week: parseInt(e.target.value) || 0 })}
+              onChange={(e) => setNewClass({ ...newClass, max_checkins_per_week: parseInt(e.target.value) || 1 })}
             />
           </div>
         </div>
