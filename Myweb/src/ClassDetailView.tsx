@@ -950,7 +950,7 @@ const exportCombinedToCSV = async () => {
                   </div>
                 </div>
                 {/* Progress — full width */}
-                <div className="col-span-2 p-4 bg-white/60 rounded-2xl border border-gray-100">
+                {/* <div className="col-span-2 p-4 bg-white/60 rounded-2xl border border-gray-100">
                   <div className="flex justify-between items-center mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center shrink-0">
@@ -977,7 +977,7 @@ const exportCombinedToCSV = async () => {
                       style={{ width: `${classData.total_sessions ? Math.min((attendanceData.totalSessions / classData.total_sessions) * 100, 100) : 0}%` }}
                     />
                   </div>
-                </div>
+                </div> */}
 
               </div>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

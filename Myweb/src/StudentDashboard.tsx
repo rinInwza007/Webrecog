@@ -288,7 +288,7 @@ const StudentDashboard: FC = () => {
                 <img src={image} alt="Logo" className="h-16 w-16 object-contain" />
               </div>
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-white">แดชบอร์ดนักเรียน</h1>
+                <h1 className="text-3xl font-semibold tracking-tight text-white"> หน้าหลัก นักเรียน</h1>
                 <p className="text-green-100 text-lg font-medium">ยินดีต้อนรับ, {appUser?.full_name}</p>
               </div>
             </div>

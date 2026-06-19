@@ -999,7 +999,7 @@ const createClass = async () => {
                     <img src={image} alt="Logo" className="h-16 w-16 object-contain" />
                   </div>
                   <div>
-                    <h1 className="text-3xl font-semibold tracking-tight text-white">แดชบอร์ดอาจารย์</h1>
+                    <h1 className="text-3xl font-semibold tracking-tight text-white">หน้าหลัก อาจารย์</h1>
                     <p className="text-blue-100 text-lg font-medium">ยินดีต้อนรับ, {user?.user_metadata?.full_name || user?.email}</p>
                   </div>
                 </div>
@@ -1225,10 +1225,11 @@ const createClass = async () => {
                     )}
                   </div>
                   {si > 0 && (
-                    <button
+                      <button
                       onClick={() => {
                         const sections = newClass.sections.filter((_, i) => i !== si)
-                        setNewClass({ ...newClass, sections })
+                        const slotCount = sections[0].scheduleSlots.length
+                        setNewClass({ ...newClass, sections, max_checkins_per_week: slotCount })
                       }}
                       className="text-[11px] text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-0.5 rounded-lg transition-all"
                     >
@@ -1305,7 +1306,12 @@ const createClass = async () => {
                               ...sections[si],
                               scheduleSlots: sections[si].scheduleSlots.filter((_, i) => i !== idx)
                             }
-                            setNewClass({ ...newClass, sections })
+                            const newSlotCount = sections[si].scheduleSlots.length
+                            setNewClass({ 
+                              ...newClass, 
+                              sections,
+                              max_checkins_per_week: newSlotCount
+                            })
                           }}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                         >
@@ -1328,11 +1334,16 @@ const createClass = async () => {
                           { day: 'จันทร์', startTime: '', endTime: '' }
                         ]
                       }
-                      setNewClass({ ...newClass, sections })
+                      const newSlotCount = sections[si].scheduleSlots.length
+                      setNewClass({ 
+                        ...newClass, 
+                        sections,
+                        max_checkins_per_week: newSlotCount
+                      })
                     }}
                     className="w-full py-2 border border-dashed border-[#0071e3]/40 text-[#0071e3] text-xs font-medium rounded-xl hover:bg-[#0071e3]/5 transition-all"
                   >
-                    + เพิ่มวันเรียนใน Section {si + 1}
+                    + เพิ่ม เรียนใน Section {si + 1}
                   </button>
                 </div>
               </div>
@@ -1342,11 +1353,17 @@ const createClass = async () => {
           {/* ปุ่มเพิ่ม Section */}
           <button
             onClick={() => {
-              const sections = [
-                ...newClass.sections,
-                { scheduleSlots: [{ day: 'จันทร์', startTime: '', endTime: '' }] }
-              ]
-              setNewClass({ ...newClass, sections })
+              const firstSectionSlots = newClass.sections[0].scheduleSlots
+              const newSection = {
+                scheduleSlots: firstSectionSlots.map(slot => ({
+                  day: slot.day,
+                  startTime: '',
+                  endTime: ''
+                }))
+              }
+              const sections = [...newClass.sections, newSection]
+              const slotCount = sections[0].scheduleSlots.length
+              setNewClass({ ...newClass, sections, max_checkins_per_week: slotCount })
             }}
             className="w-full mt-3 py-2 border border-dashed border-gray-200 text-gray-400 text-sm rounded-xl hover:border-gray-300 hover:text-gray-500 transition-all"
           >
