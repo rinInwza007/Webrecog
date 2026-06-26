@@ -916,7 +916,7 @@ const exportCombinedToCSV = async () => {
                   <div>
                     <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5 text-left">คาบเรียนทั้งหมด</p>
                     <p className="text-base font-semibold text-gray-900 text-left">
-                      {classData.total_sessions ? `${classData.total_sessions} คาบ` : 'ไม่ระบุ'}
+                      {classData.total_weeks ? `${classData.total_weeks} สัปดาห์` : 'ไม่ระบุ'}
                     </p>
                   </div>
                 </div>
@@ -961,20 +961,20 @@ const exportCombinedToCSV = async () => {
                       <div>
                         <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-0.5">ความคืบหน้าคาบเรียน</p>
                         <p className="text-base font-semibold text-gray-900">
-                          เช็คชื่อไปแล้ว {attendanceData.totalSessions} คาบ จากทั้งหมด {classData.total_sessions || '?'} คาบ
+                          เช็คชื่อไปแล้ว {attendanceData.totalSessions} คาบ จากทั้งหมด {classData.total_weeks || '?'} สัปดาห์
                         </p>
                       </div>
                     </div>
                     <span className="text-lg font-bold text-[#0071e3]">
-                      {classData.total_sessions
-                        ? `${Math.round((attendanceData.totalSessions / classData.total_sessions) * 100)}%`
+                      {classData.total_weeks
+                        ? `${Math.round((attendanceData.totalSessions / classData.total_weeks) * 100)}%`
                         : '-'}
                     </span>
                   </div>
                   <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-[#0071e3] rounded-full transition-all duration-700"
-                      style={{ width: `${classData.total_sessions ? Math.min((attendanceData.totalSessions / classData.total_sessions) * 100, 100) : 0}%` }}
+                      style={{ width: `${classData.total_weeks ? Math.min((attendanceData.totalSessions / classData.total_weeks) * 100, 100) : 0}%` }}
                     />
                   </div>
                 </div> */}
