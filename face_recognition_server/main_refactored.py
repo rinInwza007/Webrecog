@@ -123,6 +123,12 @@ class ManualCheckinRequest(BaseModel):
     student_email: str
     status: str = "present"
 
+class_result = supabase_manager.get_client()\
+    .table('classes')\
+    .select('total_weeks, max_checkins_per_week')\
+    .eq('class_id', class_id)\
+    .execute()
+
 # ==================== Helper Functions ====================
 
 async def get_enrolled_students_for_class(class_id: str) -> List[str]:
@@ -206,50 +212,56 @@ async def start_motion_detection(
         # 1. Fetch limits from classes table ทำการดึงข้อมูลจำกัดจำนวนเซสชันจากตาราง classes เพื่อเช็คว่าห้องเรียนนี้สามารถสร้างเซสชันได้อีกหรือไม่
         class_result = supabase_manager.get_client()\
             .table('classes')\
-            .select('total_sessions, max_checkins_per_week')\
+            .select('total_weeks, max_checkins_per_week')\
             .eq('class_id', class_id)\
             .execute()
         
         if class_result.data:
-            total_limit = class_result.data[0].get('total_sessions')
-            weekly_limit = class_result.data[0].get('max_checkins_per_week')
-            
-            # 2. Check total session limit ถ้ามีการจำกัดจำนวนเซสชันทั้งหมด ให้เช็คว่าห้องเรียนนี้สร้างเซสชันไปแล้วกี่เซสชัน โดยนับเฉพาะเซสชันที่มีสถานะ active หรือ ended
-            if total_limit:
-                total_sessions_result = supabase_manager.get_client()\
-                    .table('attendance_sessions')\
-                    .select('id', count='exact')\
-                    .eq('class_id', class_id)\
-                    .in_('status', ['active', 'ended'])\
-                    .execute()
-                
-                total_count = total_sessions_result.count or 0
-                if total_count >= total_limit:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว ({total_count}/{total_limit})"
+            total_weeks = class_result.data[0].get('total_weeks')
+        weekly_limit = class_result.data[0].get('max_checkins_per_week')
+
+        # 2. Check total session limit (คูณ weeks * max_per_week ก่อนเทียบ)
+        if total_weeks:
+            total_weeks_allowed = total_weeks * (weekly_limit or 1)
+
+            total_count_result = supabase_manager.get_client()\
+                .table('attendance_sessions')\
+                .select('id', count='exact')\
+                .eq('class_id', class_id)\
+                .in_('status', ['active', 'ended'])\
+                .execute()
+
+            total_count = total_count_result.count or 0
+            if total_count >= total_weeks_allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว "
+                        f"({total_count}/{total_weeks_allowed} ครั้ง — "
+                        f"{total_weeks} สัปดาห์ x {weekly_limit or 1} ครั้ง/สัปดาห์)"
                     )
-            
-            # 3. Check weekly session limit ถ้ามีการจำกัดจำนวนเซสชันต่อสัปดาห์ ให้เช็คว่าห้องเรียนนี้สร้างเซสชันไปแล้วกี่เซสชันในสัปดาห์นี้ โดยนับเฉพาะเซสชันที่มีสถานะ active หรือ ended และเริ่มต้นในสัปดาห์นี้
-            if weekly_limit:
-                now_utc = datetime.now(timezone.utc)
-                week_start = (now_utc - timedelta(days=now_utc.weekday()))\
-                    .replace(hour=0, minute=0, second=0, microsecond=0)
-                
-                weekly_sessions_result = supabase_manager.get_client()\
-                    .table('attendance_sessions')\
-                    .select('id', count='exact')\
-                    .eq('class_id', class_id)\
-                    .in_('status', ['active', 'ended'])\
-                    .gte('start_time', week_start.isoformat())\
-                    .execute()
-                
-                weekly_count = weekly_sessions_result.count or 0
-                if weekly_count >= weekly_limit:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
-                    )
+                )
+
+        # 3. Check weekly session limit (เหมือนเดิม ไม่ต้องแก้)
+        if weekly_limit:
+            now_utc = datetime.now(timezone.utc)
+            week_start = (now_utc - timedelta(days=now_utc.weekday()))\
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+
+            weekly_sessions_result = supabase_manager.get_client()\
+                .table('attendance_sessions')\
+                .select('id', count='exact')\
+                .eq('class_id', class_id)\
+                .in_('status', ['active', 'ended'])\
+                .gte('start_time', week_start.isoformat())\
+                .execute()
+
+            weekly_count = weekly_sessions_result.count or 0
+            if weekly_count >= weekly_limit:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
+                )
 
         session_id = str(uuid.uuid4()) # สร้าง session_id ใหม่ด้วย UUID เพื่อความปลอดภัยและไม่ซ้ำกัน
         now = datetime.now(timezone.utc) # ใช้เวลาปัจจุบันเป็น UTC เพื่อความสอดคล้องกับฐานข้อมูลและการคำนวณเวลาในอนาคต
@@ -866,50 +878,56 @@ async def start_motion_session(
         # 1. Fetch limits from classes table
         class_result = supabase_manager.get_client()\
             .table('classes')\
-            .select('total_sessions, max_checkins_per_week, subject_name')\
+            .select('total_weeks, max_checkins_per_week, subject_name')\
             .eq('class_id', class_id)\
             .execute()
         
         if class_result.data:
-            total_limit = class_result.data[0].get('total_sessions')
+            total_weeks = class_result.data[0].get('total_weeks')
             weekly_limit = class_result.data[0].get('max_checkins_per_week')
-            
-            # 2. Check total session limit
-            if total_limit:
-                total_sessions_result = supabase_manager.get_client()\
-                    .table('attendance_sessions')\
-                    .select('id', count='exact')\
-                    .eq('class_id', class_id)\
-                    .in_('status', ['active', 'ended'])\
-                    .execute()
-                
-                total_count = total_sessions_result.count or 0
-                if total_count >= total_limit:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว ({total_count}/{total_limit})"
+
+        # 2. Check total session limit (คูณ weeks * max_per_week ก่อนเทียบ)
+        if total_weeks:
+            total_weeks_allowed = total_weeks * (weekly_limit or 1)
+
+            total_count_result = supabase_manager.get_client()\
+                .table('attendance_sessions')\
+                .select('id', count='exact')\
+                .eq('class_id', class_id)\
+                .in_('status', ['active', 'ended'])\
+                .execute()
+
+            total_count = total_count_result.count or 0
+            if total_count >= total_weeks_allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"ห้องเรียนนี้สร้างเซสชันครบตามจำนวนที่กำหนดแล้ว "
+                        f"({total_count}/{total_weeks_allowed} ครั้ง — "
+                        f"{total_weeks} สัปดาห์ x {weekly_limit or 1} ครั้ง/สัปดาห์)"
                     )
-            
-            # 3. Check weekly session limit
-            if weekly_limit:
-                now_utc = datetime.now(timezone.utc)
-                week_start = (now_utc - timedelta(days=now_utc.weekday()))\
-                    .replace(hour=0, minute=0, second=0, microsecond=0)
-                
-                weekly_sessions_result = supabase_manager.get_client()\
-                    .table('attendance_sessions')\
-                    .select('id', count='exact')\
-                    .eq('class_id', class_id)\
-                    .in_('status', ['active', 'ended'])\
-                    .gte('start_time', week_start.isoformat())\
-                    .execute()
-                
-                weekly_count = weekly_sessions_result.count or 0
-                if weekly_count >= weekly_limit:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
-                    )
+                )
+
+        # 3. Check weekly session limit (เหมือนเดิม ไม่ต้องแก้)
+        if weekly_limit:
+            now_utc = datetime.now(timezone.utc)
+            week_start = (now_utc - timedelta(days=now_utc.weekday()))\
+                .replace(hour=0, minute=0, second=0, microsecond=0)
+
+            weekly_sessions_result = supabase_manager.get_client()\
+                .table('attendance_sessions')\
+                .select('id', count='exact')\
+                .eq('class_id', class_id)\
+                .in_('status', ['active', 'ended'])\
+                .gte('start_time', week_start.isoformat())\
+                .execute()
+
+            weekly_count = weekly_sessions_result.count or 0
+            if weekly_count >= weekly_limit:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ห้องเรียนนี้สร้างเซสชันเกินขีดจำกัดต่อสัปดาห์แล้ว ({weekly_count}/{weekly_limit})"
+                )
 
         # Create a motion detection session (same as realtime)
         session_id = str(uuid.uuid4())

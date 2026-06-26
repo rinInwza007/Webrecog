@@ -173,7 +173,7 @@ const EnhancedTeacherDashboard: FC = () => {
 const [newClass, setNewClass] = useState({
   subject_name: '',
   description: '',
-  total_sessions: 12,
+  total_weeks: 12,
   max_checkins_per_week: 1,
   sections: [
     { scheduleSlots: [{ day: 'จันทร์', startTime: '', endTime: '' }] }
@@ -510,16 +510,16 @@ const createClass = async () => {
   if (!newClass.subject_name.trim()) { /* validate */ return }
 
   // validate แต่ละ section
-// validate total_sessions และ max_checkins_per_week
-  if (!newClass.total_sessions || newClass.total_sessions < 1) {
-    Swal.fire({ icon: 'error', title: 'จำนวนคาบไม่ถูกต้อง', text: 'กรุณากรอกจำนวนคาบทั้งหมดอย่างน้อย 1 คาบ' })
-    return
-  }
+// validate total_weeks และ max_checkins_per_week
+ if (!newClass.total_weeks || newClass.total_weeks < 1) {
+  Swal.fire({ icon: 'error', title: 'จำนวนสัปดาห์ไม่ถูกต้อง', text: 'กรุณากรอกจำนวนสัปดาห์ของคอร์สอย่างน้อย 1 สัปดาห์' })
+  return
+}
 
-  if (!newClass.max_checkins_per_week || newClass.max_checkins_per_week < 1) {
-    Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อไม่ถูกต้อง', text: 'กรุณากรอกจำนวนเช็คชื่อต่อสัปดาห์อย่างน้อย 1 ครั้ง' })
-    return
-  }
+if (!newClass.max_checkins_per_week || newClass.max_checkins_per_week < 1) {
+  Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อไม่ถูกต้อง', text: 'กรุณากรอกจำนวนเช็คชื่อต่อสัปดาห์อย่างน้อย 1 ครั้ง' })
+  return
+}
 
   // เช็คว่าทุก section มีจำนวนวันเรียนเท่ากัน
   const slotCounts = newClass.sections.map(s => s.scheduleSlots.length)
@@ -533,52 +533,39 @@ const createClass = async () => {
     return
   }
   for (let si = 0; si < newClass.sections.length; si++) {
-    const section = newClass.sections[si]
-    const slots = section.scheduleSlots
+  const section = newClass.sections[si]
+  const slots = section.scheduleSlots
 
-    // เช็คว่ากรอกเวลาครบหรือยัง
-    const invalid = slots.some(s => !s.startTime || !s.endTime)
-    if (invalid) {
-      Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด',
-        text: `กรุณาเลือกเวลาเรียนให้ครบถ้วนใน Section ${si + 1}` })
-      return
-    }
+  const invalid = slots.some(s => !s.startTime || !s.endTime)
+  if (invalid) { /* เดิม */ return }
 
-    // เช็ค slotCount
-    const slotCount = slots.length
-    if (newClass.total_sessions < slotCount) {
-      Swal.fire({ icon: 'error', title: 'จำนวนคาบไม่ถูกต้อง',
-        text: `Section ${si + 1} มี ${slotCount} วันเรียน จำนวนคาบทั้งหมดต้องมีอย่างน้อย ${slotCount} คาบ` })
-      return
-    }
-    if (newClass.max_checkins_per_week < slotCount) {
-      Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อต่อสัปดาห์ไม่ถูกต้อง',
-        text: `Section ${si + 1} มี ${slotCount} วันเรียน เช็คชื่อได้ต่อสัปดาห์ต้องมีอย่างน้อย ${slotCount} ครั้ง` })
-      return
-    }
+  const slotCount = slots.length
 
+  
+  if (newClass.max_checkins_per_week < slotCount) {
+    Swal.fire({ icon: 'error', title: 'จำนวนเช็คชื่อต่อสัปดาห์ไม่ถูกต้อง',
+      text: `Section ${si + 1} มี ${slotCount} วันเรียน เช็คชื่อได้ต่อสัปดาห์ต้องมีอย่างน้อย ${slotCount} ครั้ง` })
+    return
   }
+}
 
   setActionLoading(true)
   try {
     const suffix = newClass.sections.length > 1
     const insertData = newClass.sections.map((section, idx) => {
-      const name = suffix
-        ? `${newClass.subject_name.trim()}[${idx + 1}]`
-        : newClass.subject_name.trim()
-      const schedule = section.scheduleSlots
-        .map(s => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')
-      return {
-        subject_name: name,
-        description: newClass.description?.trim() || null,
-        schedule,
-        total_sessions: newClass.total_sessions || null,
-        max_checkins_per_week: newClass.max_checkins_per_week || null,
-        teacher_id: user?.id,
-        teacher_email: user?.email,
-        class_code: generateClassCode()
-      }
-    })
+  const name = suffix ? `${newClass.subject_name.trim()}[${idx + 1}]` : newClass.subject_name.trim()
+  const schedule = section.scheduleSlots.map(s => `${s.day} ${s.startTime}-${s.endTime}`).join(', ')
+  return {
+    subject_name: name,
+    description: newClass.description?.trim() || null,
+    schedule,
+    total_weeks: newClass.total_weeks || null,
+    max_checkins_per_week: newClass.max_checkins_per_week || null,
+    teacher_id: user?.id,
+    teacher_email: user?.email,
+    class_code: generateClassCode()
+  }
+})
 
     const { error } = await supabase.from('classes').insert(insertData)
     if (error) throw error
@@ -593,7 +580,7 @@ const createClass = async () => {
           })))
         }
     setShowCreateModal(false)
-    setNewClass({ subject_name:'', description:'', total_sessions:12,
+    setNewClass({ subject_name:'', description:'', total_weeks:12,
       max_checkins_per_week:1, sections:[{scheduleSlots:[{day:'จันทร์',startTime:'',endTime:''}]}] })
     fetchTeacherData()
   } catch (error: any) {
@@ -1177,12 +1164,12 @@ const createClass = async () => {
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">จำนวนคาบทั้งหมด</label>
+            <label className="block text-sm font-medium text-gray-600 mb-2 ml-1">จำนวนสัปดาห์</label>
             <input
               type="number"
               className="w-full apple-input"
-              value={newClass.total_sessions}
-              onChange={(e) => setNewClass({ ...newClass, total_sessions: parseInt(e.target.value) || 1 })}
+              value={newClass.total_weeks}
+              onChange={(e) => setNewClass({ ...newClass, total_weeks: parseInt(e.target.value) || 1 })}
             />
           </div>
           <div>

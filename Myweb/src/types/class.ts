@@ -72,7 +72,7 @@ export interface Class extends ClassAttendanceSettings {
   updated_at: string
   deleted_at: string | null
   is_deleted: boolean
-  total_sessions: number | null
+  total_weeks: number | null
   max_checkins_per_week: number | null
   actual_session_count: number
   enrolled_student_count: number
